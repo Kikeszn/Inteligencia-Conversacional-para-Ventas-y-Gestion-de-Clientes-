@@ -19,8 +19,9 @@ from prompts.comercial_prompt import (
     COMERCIAL_SYSTEM_PROMPT,
     construir_contexto_datos_negocio,
 )
+from prompts.quiz import QUIZ_FALLBACK
 from prompts.router_prompt import ROUTER_PROMPT
-from prompts.tutor_prompt import TUTOR_SYSTEM_PROMPT
+from prompts.tutor_prompt import TUTOR_SYSTEM_PROMPT, construir_prompt_quiz
 
 load_dotenv()
 
@@ -80,6 +81,48 @@ def iniciar_chat_tutor():
 def enviar_mensaje_tutor(chat, mensaje: str) -> str:
     respuesta = chat.send_message(mensaje)
     return respuesta.text
+
+
+def _quiz_generado_es_valido(preguntas) -> bool:
+    """Valida que el JSON que devolvio el modelo tenga exactamente 3
+    preguntas, cada una con al menos 2 opciones y un indice 'correcta'
+    valido dentro de esas opciones."""
+    if not isinstance(preguntas, list) or len(preguntas) != 3:
+        return False
+    for pregunta in preguntas:
+        if not isinstance(pregunta, dict):
+            return False
+        if not isinstance(pregunta.get("pregunta"), str) or not pregunta["pregunta"].strip():
+            return False
+        opciones = pregunta.get("opciones")
+        if not isinstance(opciones, list) or len(opciones) < 2:
+            return False
+        correcta = pregunta.get("correcta")
+        if not isinstance(correcta, int) or isinstance(correcta, bool) or not (0 <= correcta < len(opciones)):
+            return False
+    return True
+
+
+def generar_quiz_tutor(historial_texto: str) -> list[dict]:
+    """Le pide al Tutor (fuera del chat en curso, con una llamada aparte)
+    que genere el quiz de 3 preguntas en base al historial completo de
+    la conversacion. Si el modelo falla o devuelve una forma invalida,
+    se usa el quiz de respaldo fijo para no romper el flujo."""
+    prompt = construir_prompt_quiz(historial_texto)
+    try:
+        respuesta = _client.models.generate_content(
+            model=_MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=TUTOR_SYSTEM_PROMPT,
+                response_mime_type="application/json",
+            ),
+        )
+        resultado = json.loads(respuesta.text)
+        preguntas = resultado.get("preguntas", [])
+        return preguntas if _quiz_generado_es_valido(preguntas) else QUIZ_FALLBACK
+    except Exception:
+        return QUIZ_FALLBACK
 
 
 # --- Agente Comercial ---------------------------------------------------

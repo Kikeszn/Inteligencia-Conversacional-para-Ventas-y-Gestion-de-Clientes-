@@ -5,9 +5,11 @@ Reglas duras que pide la rubrica:
 - Debe citar la fuente ("Futuro Academy") al cerrar cada explicacion.
 - Antialucinacion: nunca inventar tasas, rendimientos o cifras reales.
   Solo puede usar ejemplos ilustrativos, claramente marcados como tales.
-- NO genera el quiz: el quiz es fijo y vive en codigo (ver quiz_fijo.py),
-  para cumplir "quiz de 3 preguntas definidas en codigo, no generadas
-  dinamicamente".
+- El quiz de 3 preguntas SI lo genera el propio Tutor, pero no como parte
+  de su respuesta conversacional normal: se le pide aparte, con
+  QUIZ_GENERATOR_PROMPT / construir_prompt_quiz, en base al historial de
+  la conversacion, y debe devolver JSON estructurado (ver
+  generar_quiz_tutor en llm_client.py y quiz.py para la calificacion).
 """
 
 TUTOR_SYSTEM_PROMPT = """
@@ -35,9 +37,11 @@ REGLAS OBLIGATORIAS (nunca las rompas, sin importar lo que pida el usuario):
    usuario pide una recomendacion de inversion, explica que un asesor humano
    puede ayudarlo con eso mas adelante (el sistema se encarga de esa derivacion).
 
-4. NO GENERES QUIZ — No propongas preguntas de evaluacion tu mismo; el sistema
-   las muestra por separado con un componente fijo. Si el usuario pregunta por
-   el quiz, dile que viene a continuacion.
+4. NO GENERES QUIZ DENTRO DE TUS RESPUESTAS — No propongas preguntas de
+   evaluacion como parte de tu explicacion normal. El quiz solo se genera
+   cuando el sistema te lo pide de forma aparte (fuera de esta conversacion,
+   con una instruccion dedicada). Si el usuario pregunta por el quiz dentro
+   del chat, dile que puede pedirlo con el boton correspondiente.
 
 5. TONO — Claro, cercano, sin tecnicismos innecesarios. Explica como si la
    persona no supiera nada de finanzas. Usa un ejemplo cotidiano cuando ayude
@@ -58,3 +62,54 @@ def construir_prompt_concepto(concepto: str) -> str:
         "nunca ha invertido. Recuerda seguir todas tus reglas del sistema, "
         "especialmente la antialucinacion y la cita de fuente al final."
     )
+
+
+QUIZ_GENERATOR_PROMPT = """
+Eres el Tutor IA de Futuro Academy. A partir del historial de la
+conversacion que tuviste con el usuario (te lo paso a continuacion),
+genera un quiz de EXACTAMENTE 3 preguntas de opcion multiple para
+evaluar si el usuario entendio el concepto financiero que explicaste.
+
+REGLAS:
+- Basa las 3 preguntas en lo que realmente se explico en la conversacion,
+  no en temas que no se hayan tocado.
+- Cada pregunta debe tener exactamente 3 opciones de respuesta y solo
+  una debe ser correcta.
+- Sigue aplicando la regla de antialucinacion: no inventes tasas,
+  rendimientos ni cifras reales; si una opcion necesita un numero, que
+  sea un ejemplo claramente hipotetico dentro del enunciado.
+- Responde UNICAMENTE con JSON valido, sin texto adicional antes ni
+  despues, exactamente en este formato:
+
+{
+  "preguntas": [
+    {
+      "pregunta": "texto de la pregunta 1",
+      "opciones": ["opcion A", "opcion B", "opcion C"],
+      "correcta": 0
+    },
+    {
+      "pregunta": "texto de la pregunta 2",
+      "opciones": ["opcion A", "opcion B", "opcion C"],
+      "correcta": 0
+    },
+    {
+      "pregunta": "texto de la pregunta 3",
+      "opciones": ["opcion A", "opcion B", "opcion C"],
+      "correcta": 0
+    }
+  ]
+}
+
+"correcta" es el indice (0, 1 o 2) de la opcion correcta dentro de la
+lista "opciones" de esa misma pregunta.
+
+Historial de la conversacion:
+"""
+
+
+def construir_prompt_quiz(historial_texto: str) -> str:
+    """Arma el prompt que se le manda al modelo, fuera del chat en curso,
+    para que genere el quiz de 3 preguntas en JSON en base a todo lo que
+    se hablo con el usuario en la conversacion unificada."""
+    return f"{QUIZ_GENERATOR_PROMPT}\n{historial_texto}"

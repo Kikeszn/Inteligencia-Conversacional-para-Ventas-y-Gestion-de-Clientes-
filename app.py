@@ -10,318 +10,291 @@ from llm_client import (
     enviar_mensaje_tutor,
     extraer_resumen_comercial,
     generar_prompt_datos_negocio,
+    generar_quiz_tutor,
     iniciar_chat_comercial,
     iniciar_chat_tutor,
 )
-from prompts.quiz_fijo import calificar_quiz, obtener_quiz
+from prompts.quiz import calificar_quiz
 
 st.title("Asistente Futuro Academy")
 
 CONCEPTO_DEMO = "interes compuesto"
 
-# Inicializacion centralizada: todas las claves de session_state que usa la
-# app se crean aqui, antes de cualquier logica condicional, para que el
-# resto del archivo pueda asumir que siempre existen (evita KeyError).
+# =========================================================================
+# INICIALIZACIÓN DE ESTADOS
+# =========================================================================
 VALORES_INICIALES_SESSION_STATE = {
-    "agente_activo": None,
-    "paso_tutor": None,
+    "estado_ui": "pedir_nombre",  # Controla qué pantalla ve el usuario
     "lead_id": None,
     "nombre_usuario": "",
+    "historial_unificado": [],  # Guarda el chat completo independientemente del agente
     "chat_tutor": None,
-    "explicacion": "",
-    "resultado_quiz_temp": None,
-    "fuente_contenido_temp": None,
     "chat_comercial": None,
     "turno_comercial": 0,
-    "historial_comercial": [],
-    "ultima_respuesta_comercial": "",
+    "ultimo_agente": None,  # Rastrea quién respondió el último mensaje
+    "datos_negocio_preguntados": False,
+    "mensaje_pendiente_comercial": "",
+    "resultado_quiz_temp": None,
+    "quiz_preguntas_temp": None,
+    "fuente_contenido_temp": None,
+    "consentimiento_tutor_resultado": None,
     "resumen_generado": None,
     "ultimo_id": None,
 }
+
 for _clave, _valor in VALORES_INICIALES_SESSION_STATE.items():
     if _clave not in st.session_state:
         st.session_state[_clave] = _valor
 
 # =========================================================================
-# PASO 0: Entrada unica -- el usuario NO elige agente, solo escribe
+# PANTALLA 1: REGISTRO INICIAL
 # =========================================================================
-if st.session_state.get("agente_activo") is None:
-    nombre_usuario = st.text_input("Como te llamas?", value="Usuario Demo")
-    mensaje_inicial = st.text_area(
-        "En que te puedo ayudar?",
-        placeholder="Ej: 'quiero aprender sobre invertir' o 'quiero un asesor para mi empresa'",
-    )
-
-    if st.button("Enviar"):
-        if not mensaje_inicial.strip():
-            st.warning("Escribe tu mensaje antes de continuar")
+if st.session_state["estado_ui"] == "pedir_nombre":
+    nombre = st.text_input("¿Cómo te llamas?")
+    if st.button("Comenzar Chat"):
+        if not nombre.strip():
+            st.warning("Escribe tu nombre antes de continuar.")
         else:
             try:
-                lead_id = crear_lead(nombre_usuario)
+                lead_id = crear_lead(nombre)
                 st.session_state["lead_id"] = lead_id
-                st.session_state["nombre_usuario"] = nombre_usuario
+                st.session_state["nombre_usuario"] = nombre
 
-                # --- Aqui vive el Agente Enrutador ---
-                agente = clasificar_intencion(mensaje_inicial)
-                st.session_state["agente_activo"] = agente
+                # Inicializar ambas memorias de IA en segundo plano
+                st.session_state["chat_tutor"] = iniciar_chat_tutor()
+                st.session_state["chat_comercial"] = iniciar_chat_comercial()
 
-                if agente == "tutor":
-                    chat = iniciar_chat_tutor()
-                    explicacion = enviar_mensaje_tutor(chat, mensaje_inicial)
-                    st.session_state["chat_tutor"] = chat
-                    st.session_state["explicacion"] = explicacion
-                    st.session_state["paso_tutor"] = "explicacion"
-                else:  # comercial
-                    st.session_state["chat_comercial"] = iniciar_chat_comercial()
-                    st.session_state["mensaje_inicial_comercial"] = mensaje_inicial
-                    st.session_state["paso_comercial"] = "preguntar_consentimiento"
+                # Mensaje de bienvenida del sistema unificado
+                msg_bienvenida = f"¡Hola, {nombre}! Soy tu asistente de Futuro Academy. ¿En qué te puedo ayudar hoy?"
+                st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": msg_bienvenida})
 
+                st.session_state["estado_ui"] = "chat_libre"
                 st.rerun()
             except Exception as e:
-                st.session_state["agente_activo"] = None
-                st.error(f"Error al iniciar la conversacion: {e}")
+                st.error(f"Error al iniciar: {e}")
 
 # =========================================================================
-# FLUJO DEL TUTOR (Historia 2)
+# PANTALLA 2: INTERFAZ DE CHAT UNIFICADA (LA "CAJA NEGRA")
 # =========================================================================
-elif st.session_state.get("agente_activo") == "tutor":
-    st.caption("Te estamos atendiendo con el Tutor IA de Futuro Academy")
+elif st.session_state["estado_ui"] == "chat_libre":
 
-    if st.session_state.get("paso_tutor") == "explicacion":
-        st.markdown(st.session_state.get("explicacion", ""))
-        if st.button("Hacer el quiz"):
-            st.session_state["paso_tutor"] = "quiz"
+    # 1. Renderizar todo el historial de la conversación
+    for msg in st.session_state["historial_unificado"]:
+        with st.chat_message(msg["rol"]):
+            st.markdown(msg["contenido"])
+
+    # 2. Opciones Contextuales (Ej: Mostrar botón de Quiz si el Tutor acaba de hablar)
+    if st.session_state["ultimo_agente"] == "tutor":
+        if st.button("Hacer un quiz rápido sobre esto", key="btn_hacer_quiz"):
+            st.session_state["estado_ui"] = "quiz_tutor"
             st.rerun()
 
-    elif st.session_state.get("paso_tutor") == "quiz":
-        st.subheader("Quiz rapido -- 3 preguntas")
-        preguntas = obtener_quiz(CONCEPTO_DEMO)
-        respuestas = []
-        for i, p in enumerate(preguntas):
-            eleccion = st.radio(p["pregunta"], p["opciones"], key=f"pregunta_{i}", index=None)
-            respuestas.append(p["opciones"].index(eleccion) if eleccion is not None else -1)
+    # 3. Input dinámico: Se evalúa CADA vez que el usuario escribe
+    if prompt := st.chat_input("Escribe tu mensaje aquí..."):
 
-        if st.button("Enviar respuestas"):
-            if -1 in respuestas:
-                st.warning("Responde las 3 preguntas antes de continuar")
-            else:
-                resultado = calificar_quiz(CONCEPTO_DEMO, respuestas)
-                # No se escribe nada en Airtable todavia: se guarda temporal
-                # en session_state hasta que el usuario de su consentimiento.
-                st.session_state["resultado_quiz_temp"] = resultado["resumen_texto"]
-                st.session_state["fuente_contenido_temp"] = (
-                    "Futuro Academy -- Modulo de Fundamentos de Inversion"
-                )
-                st.session_state["paso_tutor"] = "consentimiento"
+        # Mostrar el mensaje del usuario inmediatamente
+        st.session_state["historial_unificado"].append({"rol": "user", "contenido": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # --- AQUÍ VIVE EL ENRUTADOR DINÁMICO ---
+        with st.spinner("Pensando..."):
+            agente_destino = clasificar_intencion(prompt)
+            st.session_state["ultimo_agente"] = agente_destino
+
+            if agente_destino == "tutor":
+                # Derivar al modelo tutor de forma transparente
+                respuesta = enviar_mensaje_tutor(st.session_state["chat_tutor"], prompt)
+                st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
                 st.rerun()
 
-    elif st.session_state.get("paso_tutor") == "consentimiento":
-        st.write(
-            "Te parece si guardo tus respuestas para que un asesor te "
-            "contacte con una propuesta personalizada?"
-        )
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Si, adelante"):
-                try:
-                    actualizar_lead(st.session_state.get("lead_id"), {
-                        "tema_interes_inicial": CONCEPTO_DEMO,
-                        "resultado_quiz": st.session_state.get("resultado_quiz_temp"),
-                        "fuente_contenido": st.session_state.get("fuente_contenido_temp"),
-                        "consentimiento": True,
-                        "fecha_consent": datetime.datetime.now(
-                            ZoneInfo("America/Guayaquil")
-                        ).isoformat(),
-                        "estado_tecnico": "Transferido",
-                    })
-                    st.session_state["paso_tutor"] = "transferido"
+            elif agente_destino == "comercial":
+                # Derivar al modelo comercial
+                if not st.session_state["datos_negocio_preguntados"]:
+                    # Interrupción: Es la primera vez que detectamos intención comercial.
+                    # Guardamos el mensaje en pausa y pedimos consentimiento.
+                    st.session_state["mensaje_pendiente_comercial"] = prompt
+                    st.session_state["estado_ui"] = "preguntar_datos_negocio"
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar el consentimiento: {e}")
-        with col2:
-            if st.button("No, gracias"):
-                st.session_state["paso_tutor"] = "sin_consentimiento"
-                st.rerun()
+                else:
+                    # Chat comercial continuo
+                    respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], prompt)
+                    st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+                    st.session_state["turno_comercial"] += 1
 
-    elif st.session_state.get("paso_tutor") == "transferido":
-        st.success("Gracias! Un asesor comercial va a revisar tu caso.")
+                    # Validar el límite de turnos comerciales
+                    if st.session_state["turno_comercial"] >= 3:
+                        st.session_state["estado_ui"] = "resumen_comercial"
 
-    elif st.session_state.get("paso_tutor") == "sin_consentimiento":
-        st.info(
-            "Sin problema, no vamos a guardar tus datos comerciales. "
-            "Puedes seguir aprendiendo cuando quieras."
-        )
+                    st.rerun()
 
 # =========================================================================
-# FLUJO DEL COMERCIAL (Historia 1 y 3)
+# PANTALLAS DE INTERRUPCIÓN (Formularios, Quizzes y Cierres)
 # =========================================================================
-elif st.session_state.get("agente_activo") == "comercial":
-    st.caption("Te estamos atendiendo con el Agente Comercial")
 
-    # --- Paso A: preguntar si quiere compartir datos del negocio ---
-    if st.session_state.get("paso_comercial") == "preguntar_consentimiento":
-        st.write(
-            "Antes de continuar: te parece si compartes algunos datos "
-            "generales de tu negocio (ingresos, activos, deudas)? Esto "
-            "nos ayuda a darte una recomendacion mas precisa y rapida."
-        )
-        col1, col2 = st.columns(2)
-        with col1:
-            compartir = st.button("Si, compartir datos")
-        with col2:
-            no_compartir = st.button("Prefiero no compartir")
+# --- FLUJO TUTOR: QUIZ Y CONSENTIMIENTO ---
+elif st.session_state["estado_ui"] == "quiz_tutor":
+    st.subheader("Quiz rápido -- 3 preguntas")
 
-        if compartir:
-            st.session_state["paso_comercial"] = "formulario"
+    # El quiz lo genera el Tutor en base a lo hablado en el chat, no un
+    # cuestionario fijo. Se genera una sola vez por intento y se guarda en
+    # sesión para no volver a llamar al modelo en cada rerun del formulario.
+    if st.session_state["quiz_preguntas_temp"] is None:
+        with st.spinner("Generando tu quiz..."):
+            historial_texto = "\n".join(
+                [f"{msg['rol']}: {msg['contenido']}" for msg in st.session_state["historial_unificado"]]
+            )
+            st.session_state["quiz_preguntas_temp"] = generar_quiz_tutor(historial_texto)
+
+    preguntas = st.session_state["quiz_preguntas_temp"]
+    respuestas = []
+
+    for i, p in enumerate(preguntas):
+        eleccion = st.radio(p["pregunta"], p["opciones"], key=f"pregunta_{i}", index=None)
+        respuestas.append(p["opciones"].index(eleccion) if eleccion is not None else -1)
+
+    if st.button("Enviar respuestas"):
+        if -1 in respuestas:
+            st.warning("Responde las 3 preguntas antes de continuar")
+        else:
+            resultado = calificar_quiz(preguntas, respuestas)
+            st.session_state["resultado_quiz_temp"] = resultado["resumen_texto"]
+            st.session_state["fuente_contenido_temp"] = "Futuro Academy -- Módulo de Fundamentos de Inversión"
+            st.session_state["quiz_preguntas_temp"] = None
+            st.session_state["estado_ui"] = "consentimiento_tutor"
             st.rerun()
 
-        if no_compartir:
+elif st.session_state["estado_ui"] == "consentimiento_tutor":
+    st.write("¿Te parece si guardo tus respuestas para que un asesor te contacte con una propuesta personalizada?")
+
+    # No se puede anidar un st.button dentro del "if" de otro st.button: en el
+    # rerun que dispara el segundo botón, el primero vuelve a evaluar False y
+    # ese bloque completo se salta, así que la navegación nunca se ejecuta.
+    # Por eso el resultado del consentimiento se guarda en session_state y el
+    # botón "Volver al chat" se renderiza en un paso aparte.
+    if st.session_state["consentimiento_tutor_resultado"] is None:
+        col1, col2 = st.columns(2)
+
+        if col1.button("Sí, adelante"):
             try:
-                respuesta = enviar_mensaje_comercial(
-                    st.session_state.get("chat_comercial"),
-                    st.session_state.get("mensaje_inicial_comercial"),
-                )
-                st.session_state["historial_comercial"] = [
-                    f"Usuario: {st.session_state.get('mensaje_inicial_comercial')}",
-                    f"Comercial: {respuesta}",
-                ]
-                st.session_state["turno_comercial"] = 1
-                actualizar_lead(st.session_state.get("lead_id"), {
-                    "datos_negocio_compartidos": False,
+                actualizar_lead(st.session_state["lead_id"], {
+                    "tema_interes_inicial": CONCEPTO_DEMO,
+                    "resultado_quiz": st.session_state["resultado_quiz_temp"],
+                    "fuente_contenido": st.session_state["fuente_contenido_temp"],
+                    "consentimiento": True,
+                    "fecha_consent": datetime.datetime.now(ZoneInfo("America/Guayaquil")).isoformat(),
+                    "estado_tecnico": "Transferido",
                 })
-                st.session_state["paso_comercial"] = "chat"
+                st.session_state["consentimiento_tutor_resultado"] = "aceptado"
                 st.rerun()
             except Exception as e:
-                st.error(f"Error al iniciar la conversacion comercial: {e}")
+                st.error(f"Error al guardar el consentimiento: {e}")
 
-    # --- Paso B: formulario de datos del negocio ---
-    elif st.session_state.get("paso_comercial") == "formulario":
-        st.subheader("Informacion del negocio")
-        with st.form("form_datos_negocio"):
-            ingresos_dia = st.number_input("Ingresos por dia (en promedio)", min_value=0.0, step=10.0)
-            ingresos_mes = st.number_input("Ingresos al mes (en promedio)", min_value=0.0, step=50.0)
-            st.markdown("---")
-            col1, col2 = st.columns(2)
-            with col1:
-                total_activos = st.number_input("Total de activos", min_value=0.0, step=100.0)
-                total_deudas = st.number_input("Total en deudas o creditos", min_value=0.0, step=100.0)
-            with col2:
-                total_pasivos = st.number_input("Total de pasivos", min_value=0.0, step=100.0)
-                total_prestamos = st.number_input("Total en prestamos", min_value=0.0, step=100.0)
-            enviado = st.form_submit_button("Enviar informacion")
+        if col2.button("No, gracias"):
+            st.session_state["consentimiento_tutor_resultado"] = "rechazado"
+            st.rerun()
+    else:
+        if st.session_state["consentimiento_tutor_resultado"] == "aceptado":
+            st.success("¡Gracias! Un asesor comercial va a revisar tu caso.")
+        else:
+            st.info("Sin problema. Puedes seguir aprendiendo cuando quieras.")
 
-        if enviado:
-            datos_negocio = {
-                "ingresos_dia": ingresos_dia,
-                "ingresos_mes": ingresos_mes,
-                "total_activos": total_activos,
-                "total_pasivos": total_pasivos,
-                "total_deudas": total_deudas,
-                "total_prestamos": total_prestamos,
-            }
-            st.session_state["datos_negocio"] = datos_negocio
+        if st.button("Volver al chat"):
+            st.session_state["consentimiento_tutor_resultado"] = None
+            st.session_state["estado_ui"] = "chat_libre"
+            st.rerun()
 
-            contexto = generar_prompt_datos_negocio(datos_negocio)
-            mensaje_con_contexto = (
-                f"{st.session_state.get('mensaje_inicial_comercial')}\n\n{contexto}"
+# --- FLUJO COMERCIAL: CONSENTIMIENTO Y FORMULARIO ---
+elif st.session_state["estado_ui"] == "preguntar_datos_negocio":
+    st.write(
+        "Antes de continuar: ¿te parece si compartes algunos datos generales de tu negocio (ingresos, activos, deudas)? Esto nos ayuda a darte una recomendación más precisa.")
+    col1, col2 = st.columns(2)
+
+    if col1.button("Sí, compartir datos"):
+        st.session_state["estado_ui"] = "formulario_negocio"
+        st.rerun()
+
+    if col2.button("Prefiero no compartir"):
+        st.session_state["datos_negocio_preguntados"] = True
+        with st.spinner("Procesando tu consulta..."):
+            # Enviar el mensaje que se había quedado en pausa
+            respuesta = enviar_mensaje_comercial(
+                st.session_state["chat_comercial"],
+                st.session_state["mensaje_pendiente_comercial"]
             )
+            st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+            st.session_state["turno_comercial"] += 1
+            actualizar_lead(st.session_state["lead_id"], {"datos_negocio_compartidos": False})
+            st.session_state["estado_ui"] = "chat_libre"
+            st.rerun()
 
-            try:
-                respuesta = enviar_mensaje_comercial(
-                    st.session_state.get("chat_comercial"), mensaje_con_contexto
-                )
-                st.session_state["historial_comercial"] = [
-                    f"Usuario: {st.session_state.get('mensaje_inicial_comercial')}",
-                    "Usuario: (comparte datos financieros de su negocio via formulario)",
-                    f"Comercial: {respuesta}",
-                ]
-                st.session_state["turno_comercial"] = 1
+elif st.session_state["estado_ui"] == "formulario_negocio":
+    st.subheader("Información del negocio")
+    with st.form("form_datos_negocio"):
+        ingresos_dia = st.number_input("Ingresos por día (en promedio)", min_value=0.0, step=10.0)
+        ingresos_mes = st.number_input("Ingresos al mes (en promedio)", min_value=0.0, step=50.0)
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            total_activos = st.number_input("Total de activos", min_value=0.0, step=100.0)
+            total_deudas = st.number_input("Total en deudas o créditos", min_value=0.0, step=100.0)
+        with col2:
+            total_pasivos = st.number_input("Total de pasivos", min_value=0.0, step=100.0)
+            total_prestamos = st.number_input("Total en préstamos", min_value=0.0, step=100.0)
+        enviado = st.form_submit_button("Enviar información")
 
-                actualizar_lead(st.session_state.get("lead_id"), {
-                    "datos_negocio_compartidos": True,
-                    **datos_negocio,
-                })
+    if enviado:
+        datos_negocio = {
+            "ingresos_dia": ingresos_dia, "ingresos_mes": ingresos_mes,
+            "total_activos": total_activos, "total_pasivos": total_pasivos,
+            "total_deudas": total_deudas, "total_prestamos": total_prestamos,
+        }
+        st.session_state["datos_negocio"] = datos_negocio
+        st.session_state["datos_negocio_preguntados"] = True
 
-                st.session_state["paso_comercial"] = "chat"
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error al procesar el formulario: {e}")
+        contexto = generar_prompt_datos_negocio(datos_negocio)
+        mensaje_combinado = f"{st.session_state['mensaje_pendiente_comercial']}\n\n{contexto}"
 
-    # --- Paso C: chat comercial normal ---
-    elif st.session_state.get("paso_comercial") == "chat":
-        for linea in st.session_state.get("historial_comercial", []):
-            st.write(linea)
+        with st.spinner("Procesando información..."):
+            respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], mensaje_combinado)
+            st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+            st.session_state["turno_comercial"] += 1
 
-        if st.session_state.get("turno_comercial", 0) < 3:
-            siguiente_mensaje = st.text_input("Tu respuesta", key="input_comercial")
-            if st.button("Responder"):
-                if siguiente_mensaje.strip():
-                    try:
-                        respuesta = enviar_mensaje_comercial(
-                            st.session_state.get("chat_comercial"), siguiente_mensaje
-                        )
-                        st.session_state["historial_comercial"].append(f"Usuario: {siguiente_mensaje}")
-                        st.session_state["historial_comercial"].append(f"Comercial: {respuesta}")
-                        st.session_state["turno_comercial"] += 1
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al enviar el mensaje: {e}")
-        else:
-            st.info("Se alcanzo el limite de 3 intercambios. Generando resumen...")
-            if st.session_state.get("resumen_generado") is None:
-                historial_texto = "\n".join(st.session_state.get("historial_comercial", []))
-                resumen = extraer_resumen_comercial(historial_texto)
-                try:
-                    actualizar_lead(st.session_state.get("lead_id"), {
-                        "tipo_prospecto": resumen.get("tipo_prospecto", "B2C"),
-                        "resumen_necesidad": resumen.get("resumen_necesidad", ""),
-                        "objeciones": resumen.get("objeciones", ""),
-                        "etapa_embudo": resumen.get("etapa_embudo", "Descubrimiento"),
-                        "prioridad": resumen.get("prioridad", "Media"),
-                        "justificacion_score": resumen.get("justificacion_score", ""),
-                        "accion_sugerida": resumen.get("accion_sugerida", "Derivar a especialista"),
-                        "estado_tecnico": "Esperando Aprobacion",
-                    })
-                    st.session_state["resumen_generado"] = resumen
-                except Exception as e:
-                    st.error(f"Error al guardar el resumen: {e}")
+            actualizar_lead(st.session_state["lead_id"], {
+                "datos_negocio_compartidos": True,
+                **datos_negocio,
+            })
+            st.session_state["estado_ui"] = "chat_libre"
+            st.rerun()
 
-            if st.session_state.get("resumen_generado") is not None:
-                st.success("Gracias! Un asesor va a revisar tu caso.")
-                st.json(st.session_state.get("resumen_generado"))
-                if "datos_negocio" in st.session_state:
-                    st.caption("Datos financieros del negocio compartidos:")
-                    st.json(st.session_state.get("datos_negocio"))
+# --- CIERRE COMERCIAL: RESUMEN Y BLOQUEO ---
+elif st.session_state["estado_ui"] == "resumen_comercial":
+    st.info("Se alcanzó el límite de intercambios de asesoría. Generando resumen del caso...")
 
-st.divider()
+    if st.session_state["resumen_generado"] is None:
+        # Convertimos todo el historial unificado en texto plano para el extractor
+        historial_texto = "\n".join(
+            [f"{msg['rol']}: {msg['contenido']}" for msg in st.session_state["historial_unificado"]])
+        resumen = extraer_resumen_comercial(historial_texto)
 
-with st.expander("Pruebas de tuberia (bloque 2 -- Airtable)"):
-    if st.button("1. Crear lead de prueba"):
         try:
-            record_id = crear_lead("Usuario Prueba")
-            st.session_state["ultimo_id"] = record_id
-            st.success(f"Lead creado: {record_id}")
+            actualizar_lead(st.session_state["lead_id"], {
+                "tipo_prospecto": resumen.get("tipo_prospecto", "B2C"),
+                "resumen_necesidad": resumen.get("resumen_necesidad", ""),
+                "objeciones": resumen.get("objeciones", ""),
+                "etapa_embudo": resumen.get("etapa_embudo", "Descubrimiento"),
+                "prioridad": resumen.get("prioridad", "Media"),
+                "justificacion_score": resumen.get("justificacion_score", ""),
+                "accion_sugerida": resumen.get("accion_sugerida", "Derivar a especialista"),
+                "estado_tecnico": "Esperando Aprobacion",
+            })
+            st.session_state["resumen_generado"] = resumen
         except Exception as e:
-            st.error(f"Error al crear: {e}")
+            st.error(f"Error al guardar el resumen: {e}")
 
-    if st.button("2. Actualizar lead de prueba"):
-        if st.session_state.get("ultimo_id") is None:
-            st.warning("Primero crea un lead")
-        else:
-            try:
-                actualizar_lead(st.session_state.get("ultimo_id"), {
-                    "prioridad": "Alta",
-                    "justificacion_score": "Prueba de tuberia desde Streamlit",
-                    "estado_tecnico": "Esperando Aprobacion",
-                })
-                st.success("Lead actualizado")
-            except Exception as e:
-                st.error(f"Error al actualizar: {e}")
-
-    if st.button("3. Ver leads pendientes"):
-        try:
-            pendientes = leer_leads_pendientes()
-            st.write(f"Encontrados: {len(pendientes)}")
-            st.json(pendientes)
-        except Exception as e:
-            st.error(f"Error al leer: {e}")
+    if st.session_state["resumen_generado"] is not None:
+        st.success("¡Gracias! Un asesor humano va a revisar tu caso para contactarte.")
+        st.json(st.session_state["resumen_generado"])
+        if "datos_negocio" in st.session_state:
+            st.caption("Datos financieros del negocio compartidos:")
+            st.json(st.session_state["datos_negocio"])

@@ -52,18 +52,6 @@ FORMATO DE RESPUESTA:
 - Termina siempre con la linea de fuente exacta de la regla 2.
 """
 
-
-def construir_prompt_concepto(concepto: str) -> str:
-    """Arma el mensaje de usuario que dispara la explicacion de un concepto
-    especifico. `concepto` viene fijo desde la app (ej. 'interes compuesto'),
-    no lo escribe el usuario final para mantener el alcance controlado."""
-    return (
-        f"Explicame el concepto financiero de '{concepto}' para alguien que "
-        "nunca ha invertido. Recuerda seguir todas tus reglas del sistema, "
-        "especialmente la antialucinacion y la cita de fuente al final."
-    )
-
-
 QUIZ_GENERATOR_PROMPT = """
 Eres el Tutor IA de Futuro Academy. A partir del historial de la
 conversacion que tuviste con el usuario (te lo paso a continuacion),
@@ -107,6 +95,30 @@ lista "opciones" de esa misma pregunta.
 Historial de la conversacion:
 """
 
+TEMA_INTERES_PROMPT = """
+Analiza la siguiente conversacion entre un usuario y un tutor financiero.
+Identifica cual fue el tema central de interes financiero o de negocios
+que trato el usuario a lo largo de la conversacion.
+
+REGLA ESTRICTA: El tema debe expresarse en ESTRICTAMENTE de 1 a 4 palabras,
+sin signos de puntuacion, en minusculas. Ejemplos validos: "interes compuesto",
+"diversificacion de inversiones", "ahorro", "fondos mutuos".
+
+Responde UNICAMENTE con este JSON, sin texto adicional ni explicacion:
+{"tema_interes": "tema en 1 a 4 palabras"}
+
+Conversacion:
+"""
+
+def construir_prompt_concepto(concepto: str) -> str:
+    """Arma el mensaje de usuario que dispara la explicacion de un concepto
+    especifico. `concepto` viene fijo desde la app (ej. 'interes compuesto'),
+    no lo escribe el usuario final para mantener el alcance controlado."""
+    return (
+        f"Explicame el concepto financiero de '{concepto}' para alguien que "
+        "nunca ha invertido. Recuerda seguir todas tus reglas del sistema, "
+        "especialmente la antialucinacion y la cita de fuente al final."
+    )
 
 def construir_prompt_quiz(historial_texto: str) -> str:
     """Arma el prompt que se le manda al modelo, fuera del chat en curso,

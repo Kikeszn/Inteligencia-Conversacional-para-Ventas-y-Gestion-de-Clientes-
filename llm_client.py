@@ -1,10 +1,6 @@
 """
 Cliente del modelo de lenguaje (Gemini). Solo llamadas al LLM -- nada de
-logica de Airtable ni de interfaz aqui, para respetar la separacion que
-pide la rubrica.
-
-Usa el SDK oficial actual google-genai (paquete: google-genai, import:
-from google import genai).
+logica de Airtable ni de interfaz aqui
 """
 
 import json
@@ -21,7 +17,7 @@ from prompts.comercial_prompt import (
 )
 from prompts.quiz import QUIZ_FALLBACK
 from prompts.router_prompt import ROUTER_PROMPT
-from prompts.tutor_prompt import TUTOR_SYSTEM_PROMPT, construir_prompt_quiz
+from prompts.tutor_prompt import TEMA_INTERES_PROMPT, TUTOR_SYSTEM_PROMPT, construir_prompt_quiz
 
 load_dotenv()
 
@@ -123,6 +119,31 @@ def generar_quiz_tutor(historial_texto: str) -> list[dict]:
         return preguntas if _quiz_generado_es_valido(preguntas) else QUIZ_FALLBACK
     except Exception:
         return QUIZ_FALLBACK
+
+
+def extraer_tema_interes(historial_texto: str) -> str:
+    """Analiza el historial de chat con el Tutor y determina cual fue el
+    tema central de interes del usuario, en estrictamente 1 a 4 palabras.
+    Se usa para completar 'tema_interes_inicial' en Airtable. Si el
+    modelo falla o devuelve un formato invalido, se usa un valor por
+    defecto neutro."""
+    prompt = f"{TEMA_INTERES_PROMPT}\n{historial_texto}"
+    try:
+        respuesta = _client.models.generate_content(
+            model=_MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+        resultado = json.loads(respuesta.text)
+        tema = str(resultado.get("tema_interes", "")).strip()
+        palabras = tema.split()
+        if tema and 1 <= len(palabras) <= 4:
+            return tema
+        return "finanzas personales"
+    except Exception:
+        return "finanzas personales"
 
 
 # --- Agente Comercial ---------------------------------------------------

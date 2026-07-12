@@ -3,30 +3,34 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
-from airtable_client import actualizar_lead, crear_lead, leer_leads_pendientes
+from airtable_client import (
+    actualizar_lead, crear_lead, leer_leads_pendientes
+)
+
 from llm_client import (
     clasificar_intencion,
     enviar_mensaje_comercial,
     enviar_mensaje_tutor,
     extraer_resumen_comercial,
+    extraer_tema_interes,
     generar_prompt_datos_negocio,
     generar_quiz_tutor,
     iniciar_chat_comercial,
     iniciar_chat_tutor,
 )
+
 from prompts.quiz import calificar_quiz
 from styles import cargar_css
 
-st.title("Asistente Future Academy")
 cargar_css()
 
-CONCEPTO_DEMO = "interes compuesto"
+st.title("Asistente Future Academy")
 
 # =========================================================================
 # INICIALIZACIÓN DE ESTADOS
 # =========================================================================
 VALORES_INICIALES_SESSION_STATE = {
-    "estado_ui": "pedir_nombre",  # Controla qué pantalla ve el usuario
+    "estado_ui": "pedir_nombre",
     "lead_id": None,
     "nombre_usuario": "",
     "historial_unificado": [],  # Guarda el chat completo independientemente del agente
@@ -42,6 +46,7 @@ VALORES_INICIALES_SESSION_STATE = {
     "consentimiento_tutor_resultado": None,
     "resumen_generado": None,
     "ultimo_id": None,
+    "tema_interes": None,  # Tema central de interes del usuario (1 a 4 palabras)
 }
 
 for _clave, _valor in VALORES_INICIALES_SESSION_STATE.items():
@@ -67,7 +72,7 @@ if st.session_state["estado_ui"] == "pedir_nombre":
                 st.session_state["chat_comercial"] = iniciar_chat_comercial()
 
                 # Mensaje de bienvenida del sistema unificado
-                msg_bienvenida = f"¡Hola, {nombre}! Soy tu asistente de Futuro Academy. ¿En qué te puedo ayudar hoy?"
+                msg_bienvenida = f"¡Hola, {nombre}! Soy tu asistente de Future Academy. ¿En qué te puedo ayudar hoy?"
                 st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": msg_bienvenida})
 
                 st.session_state["estado_ui"] = "chat_libre"
@@ -136,7 +141,7 @@ elif st.session_state["estado_ui"] == "chat_libre":
 
 # --- FLUJO TUTOR: QUIZ Y CONSENTIMIENTO ---
 elif st.session_state["estado_ui"] == "quiz_tutor":
-    st.subheader("Quiz rápido -- 3 preguntas")
+    st.subheader("Quiz rápido")
 
     # El quiz lo genera el Tutor en base a lo hablado en el chat, no un
     # cuestionario fijo. Se genera una sola vez por intento y se guarda en
@@ -147,6 +152,7 @@ elif st.session_state["estado_ui"] == "quiz_tutor":
                 [f"{msg['rol']}: {msg['contenido']}" for msg in st.session_state["historial_unificado"]]
             )
             st.session_state["quiz_preguntas_temp"] = generar_quiz_tutor(historial_texto)
+            st.session_state["tema_interes"] = extraer_tema_interes(historial_texto)
 
     preguntas = st.session_state["quiz_preguntas_temp"]
     respuestas = []
@@ -161,7 +167,7 @@ elif st.session_state["estado_ui"] == "quiz_tutor":
         else:
             resultado = calificar_quiz(preguntas, respuestas)
             st.session_state["resultado_quiz_temp"] = resultado["resumen_texto"]
-            st.session_state["fuente_contenido_temp"] = "Futuro Academy -- Módulo de Fundamentos de Inversión"
+            st.session_state["fuente_contenido_temp"] = "Future Academy -- Módulo de Fundamentos de Inversión"
             st.session_state["quiz_preguntas_temp"] = None
             st.session_state["estado_ui"] = "consentimiento_tutor"
             st.rerun()
@@ -180,7 +186,7 @@ elif st.session_state["estado_ui"] == "consentimiento_tutor":
         if col1.button("Sí, adelante"):
             try:
                 actualizar_lead(st.session_state["lead_id"], {
-                    "tema_interes_inicial": CONCEPTO_DEMO,
+                    "tema_interes_inicial": st.session_state["tema_interes"],
                     "resultado_quiz": st.session_state["resultado_quiz_temp"],
                     "fuente_contenido": st.session_state["fuente_contenido_temp"],
                     "consentimiento": True,
@@ -271,23 +277,23 @@ elif st.session_state["estado_ui"] == "formulario_negocio":
 
 # --- CIERRE COMERCIAL: RESUMEN Y BLOQUEO ---
 elif st.session_state["estado_ui"] == "resumen_comercial":
-    st.info("Se alcanzó el límite de intercambios de asesoría. Generando resumen del caso...")
+    st.info("Generando resumen del caso...")
 
     if st.session_state["resumen_generado"] is None:
-        # Convertimos todo el historial unificado en texto plano para el extractor
+        #Convertimos todo el historial unificado en texto plano para el extractor
         historial_texto = "\n".join(
             [f"{msg['rol']}: {msg['contenido']}" for msg in st.session_state["historial_unificado"]])
         resumen = extraer_resumen_comercial(historial_texto)
 
         try:
             actualizar_lead(st.session_state["lead_id"], {
-                "tipo_prospecto": resumen.get("tipo_prospecto", "B2C"),
+                "tipo_prospecto": resumen.get("tipo_prospecto", ""),
                 "resumen_necesidad": resumen.get("resumen_necesidad", ""),
                 "objeciones": resumen.get("objeciones", ""),
                 "etapa_embudo": resumen.get("etapa_embudo", "Descubrimiento"),
                 "prioridad": resumen.get("prioridad", "Media"),
                 "justificacion_score": resumen.get("justificacion_score", ""),
-                "accion_sugerida": resumen.get("accion_sugerida", "Derivar a especialista"),
+                "accion_sugerida": resumen.get("accion_sugerida", ""),
                 "estado_tecnico": "Esperando Aprobacion",
             })
             st.session_state["resumen_generado"] = resumen
@@ -296,7 +302,3 @@ elif st.session_state["estado_ui"] == "resumen_comercial":
 
     if st.session_state["resumen_generado"] is not None:
         st.success("¡Gracias! Un asesor humano va a revisar tu caso para contactarte.")
-        st.json(st.session_state["resumen_generado"])
-        if "datos_negocio" in st.session_state:
-            st.caption("Datos financieros del negocio compartidos:")
-            st.json(st.session_state["datos_negocio"])

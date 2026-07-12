@@ -20,7 +20,9 @@ REGLAS OBLIGATORIAS:
 
 2. Haz 2 a 3 preguntas de perfilamiento breves: capacidad de ahorro o
    presupuesto, plazo, tolerancia al riesgo, o la necesidad especifica
-   que tiene.
+   que tiene. Si en el mensaje recibes un bloque que empieza con
+   "[CONTEXTO YA RECOPILADO...]", NO repitas esas preguntas -- usa esos
+   datos directamente y limita tu perfilamiento a 1 pregunta adicional.
 
 3. Limite estricto: al tercer intercambio con el usuario, cierra la
    conversacion agradeciendo y explicando que un asesor humano va a
@@ -52,3 +54,33 @@ exacto, sin texto adicional:
 
 Conversacion:
 """
+
+
+DATOS_NEGOCIO_CONTEXT_TEMPLATE = """
+[CONTEXTO YA RECOPILADO -- NO VUELVAS A PREGUNTAR ESTOS DATOS]
+El prospecto ya compartio voluntariamente estos datos financieros de su negocio:
+- Ingresos promedio por dia: {ingresos_dia}
+- Ingresos promedio al mes: {ingresos_mes}
+- Total de activos: {total_activos}
+- Total de pasivos: {total_pasivos}
+- Total en deudas o creditos: {total_deudas}
+- Total en prestamos: {total_prestamos}
+
+Usa estos datos para:
+1. Confirmar que es un prospecto B2B (negocio) sin tener que preguntarlo de nuevo.
+2. Ajustar tu calificacion de prioridad usando esta info real en vez de preguntas genericas.
+3. Hacer como maximo 1 pregunta de seguimiento (no 2-3), ya que gran parte del perfilamiento ya esta cubierto.
+"""
+
+
+def construir_contexto_datos_negocio(datos: dict) -> str:
+    """Genera el bloque de contexto que se inyecta en el chat comercial
+    cuando el prospecto llena el formulario de datos del negocio."""
+    return DATOS_NEGOCIO_CONTEXT_TEMPLATE.format(
+        ingresos_dia=datos.get("ingresos_dia", "N/D"),
+        ingresos_mes=datos.get("ingresos_mes", "N/D"),
+        total_activos=datos.get("total_activos", "N/D"),
+        total_pasivos=datos.get("total_pasivos", "N/D"),
+        total_deudas=datos.get("total_deudas", "N/D"),
+        total_prestamos=datos.get("total_prestamos", "N/D"),
+    )

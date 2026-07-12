@@ -14,7 +14,11 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from prompts.comercial_prompt import COMERCIAL_EXTRACTOR_PROMPT, COMERCIAL_SYSTEM_PROMPT
+from prompts.comercial_prompt import (
+    COMERCIAL_EXTRACTOR_PROMPT,
+    COMERCIAL_SYSTEM_PROMPT,
+    construir_contexto_datos_negocio,
+)
 from prompts.router_prompt import ROUTER_PROMPT
 from prompts.tutor_prompt import TUTOR_SYSTEM_PROMPT
 
@@ -92,6 +96,12 @@ def iniciar_chat_comercial():
 def enviar_mensaje_comercial(chat, mensaje: str) -> str:
     respuesta = chat.send_message(mensaje)
     return respuesta.text
+
+
+def generar_prompt_datos_negocio(datos: dict) -> str:
+    """Envoltura fina sobre construir_contexto_datos_negocio, disponible
+    desde llm_client para quien importe desde aqui."""
+    return construir_contexto_datos_negocio(datos)
 
 
 def extraer_resumen_comercial(historial_texto: str) -> dict:

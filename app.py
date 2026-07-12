@@ -8,6 +8,7 @@ from llm_client import (
     enviar_mensaje_comercial,
     enviar_mensaje_tutor,
     extraer_resumen_comercial,
+    generar_prompt_datos_negocio,
     iniciar_chat_comercial,
     iniciar_chat_tutor,
 )
@@ -53,15 +54,9 @@ if st.session_state["agente_activo"] is None:
                     st.session_state["explicacion"] = explicacion
                     st.session_state["paso_tutor"] = "explicacion"
                 else:  # comercial
-                    chat = iniciar_chat_comercial()
-                    respuesta = enviar_mensaje_comercial(chat, mensaje_inicial)
-                    st.session_state["chat_comercial"] = chat
-                    st.session_state["turno_comercial"] = 1
-                    st.session_state["historial_comercial"] = [
-                        f"Usuario: {mensaje_inicial}",
-                        f"Comercial: {respuesta}",
-                    ]
-                    st.session_state["ultima_respuesta_comercial"] = respuesta
+                    st.session_state["chat_comercial"] = iniciar_chat_comercial()
+                    st.session_state["mensaje_inicial_comercial"] = mensaje_inicial
+                    st.session_state["paso_comercial"] = "preguntar_consentimiento"
 
                 st.rerun()
             except Exception as e:
@@ -142,46 +137,140 @@ elif st.session_state["agente_activo"] == "tutor":
 elif st.session_state["agente_activo"] == "comercial":
     st.caption("Te estamos atendiendo con el Agente Comercial")
 
-    for linea in st.session_state["historial_comercial"]:
-        st.write(linea)
+    # --- Paso A: preguntar si quiere compartir datos del negocio ---
+    if st.session_state["paso_comercial"] == "preguntar_consentimiento":
+        st.write(
+            "Antes de continuar: te parece si compartes algunos datos "
+            "generales de tu negocio (ingresos, activos, deudas)? Esto "
+            "nos ayuda a darte una recomendacion mas precisa y rapida."
+        )
+        col1, col2 = st.columns(2)
+        with col1:
+            compartir = st.button("Si, compartir datos")
+        with col2:
+            no_compartir = st.button("Prefiero no compartir")
 
-    if st.session_state["turno_comercial"] < 3:
-        siguiente_mensaje = st.text_input("Tu respuesta", key="input_comercial")
-        if st.button("Responder"):
-            if siguiente_mensaje.strip():
-                try:
-                    respuesta = enviar_mensaje_comercial(
-                        st.session_state["chat_comercial"], siguiente_mensaje
-                    )
-                    st.session_state["historial_comercial"].append(f"Usuario: {siguiente_mensaje}")
-                    st.session_state["historial_comercial"].append(f"Comercial: {respuesta}")
-                    st.session_state["turno_comercial"] += 1
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al enviar el mensaje: {e}")
-    else:
-        st.info("Se alcanzo el limite de 3 intercambios. Generando resumen...")
-        if "resumen_generado" not in st.session_state:
-            historial_texto = "\n".join(st.session_state["historial_comercial"])
-            resumen = extraer_resumen_comercial(historial_texto)
+        if compartir:
+            st.session_state["paso_comercial"] = "formulario"
+            st.rerun()
+
+        if no_compartir:
             try:
+                respuesta = enviar_mensaje_comercial(
+                    st.session_state["chat_comercial"],
+                    st.session_state["mensaje_inicial_comercial"],
+                )
+                st.session_state["historial_comercial"] = [
+                    f"Usuario: {st.session_state['mensaje_inicial_comercial']}",
+                    f"Comercial: {respuesta}",
+                ]
+                st.session_state["turno_comercial"] = 1
                 actualizar_lead(st.session_state["lead_id"], {
-                    "tipo_prospecto": resumen.get("tipo_prospecto", "B2C"),
-                    "resumen_necesidad": resumen.get("resumen_necesidad", ""),
-                    "objeciones": resumen.get("objeciones", ""),
-                    "etapa_embudo": resumen.get("etapa_embudo", "Descubrimiento"),
-                    "prioridad": resumen.get("prioridad", "Media"),
-                    "justificacion_score": resumen.get("justificacion_score", ""),
-                    "accion_sugerida": resumen.get("accion_sugerida", "Derivar a especialista"),
-                    "estado_tecnico": "Esperando Aprobacion",
+                    "datos_negocio_compartidos": False,
                 })
-                st.session_state["resumen_generado"] = resumen
+                st.session_state["paso_comercial"] = "chat"
+                st.rerun()
             except Exception as e:
-                st.error(f"Error al guardar el resumen: {e}")
+                st.error(f"Error al iniciar la conversacion comercial: {e}")
 
-        if "resumen_generado" in st.session_state:
-            st.success("Gracias! Un asesor va a revisar tu caso.")
-            st.json(st.session_state["resumen_generado"])
+    # --- Paso B: formulario de datos del negocio ---
+    elif st.session_state["paso_comercial"] == "formulario":
+        st.subheader("Informacion del negocio")
+        with st.form("form_datos_negocio"):
+            ingresos_dia = st.number_input("Ingresos por dia (en promedio)", min_value=0.0, step=10.0)
+            ingresos_mes = st.number_input("Ingresos al mes (en promedio)", min_value=0.0, step=50.0)
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                total_activos = st.number_input("Total de activos", min_value=0.0, step=100.0)
+                total_deudas = st.number_input("Total en deudas o creditos", min_value=0.0, step=100.0)
+            with col2:
+                total_pasivos = st.number_input("Total de pasivos", min_value=0.0, step=100.0)
+                total_prestamos = st.number_input("Total en prestamos", min_value=0.0, step=100.0)
+            enviado = st.form_submit_button("Enviar informacion")
+
+        if enviado:
+            datos_negocio = {
+                "ingresos_dia": ingresos_dia,
+                "ingresos_mes": ingresos_mes,
+                "total_activos": total_activos,
+                "total_pasivos": total_pasivos,
+                "total_deudas": total_deudas,
+                "total_prestamos": total_prestamos,
+            }
+            st.session_state["datos_negocio"] = datos_negocio
+
+            contexto = generar_prompt_datos_negocio(datos_negocio)
+            mensaje_con_contexto = (
+                f"{st.session_state['mensaje_inicial_comercial']}\n\n{contexto}"
+            )
+
+            try:
+                respuesta = enviar_mensaje_comercial(
+                    st.session_state["chat_comercial"], mensaje_con_contexto
+                )
+                st.session_state["historial_comercial"] = [
+                    f"Usuario: {st.session_state['mensaje_inicial_comercial']}",
+                    "Usuario: (comparte datos financieros de su negocio via formulario)",
+                    f"Comercial: {respuesta}",
+                ]
+                st.session_state["turno_comercial"] = 1
+
+                actualizar_lead(st.session_state["lead_id"], {
+                    "datos_negocio_compartidos": True,
+                    **datos_negocio,
+                })
+
+                st.session_state["paso_comercial"] = "chat"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al procesar el formulario: {e}")
+
+    # --- Paso C: chat comercial normal ---
+    elif st.session_state["paso_comercial"] == "chat":
+        for linea in st.session_state["historial_comercial"]:
+            st.write(linea)
+
+        if st.session_state["turno_comercial"] < 3:
+            siguiente_mensaje = st.text_input("Tu respuesta", key="input_comercial")
+            if st.button("Responder"):
+                if siguiente_mensaje.strip():
+                    try:
+                        respuesta = enviar_mensaje_comercial(
+                            st.session_state["chat_comercial"], siguiente_mensaje
+                        )
+                        st.session_state["historial_comercial"].append(f"Usuario: {siguiente_mensaje}")
+                        st.session_state["historial_comercial"].append(f"Comercial: {respuesta}")
+                        st.session_state["turno_comercial"] += 1
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al enviar el mensaje: {e}")
+        else:
+            st.info("Se alcanzo el limite de 3 intercambios. Generando resumen...")
+            if "resumen_generado" not in st.session_state:
+                historial_texto = "\n".join(st.session_state["historial_comercial"])
+                resumen = extraer_resumen_comercial(historial_texto)
+                try:
+                    actualizar_lead(st.session_state["lead_id"], {
+                        "tipo_prospecto": resumen.get("tipo_prospecto", "B2C"),
+                        "resumen_necesidad": resumen.get("resumen_necesidad", ""),
+                        "objeciones": resumen.get("objeciones", ""),
+                        "etapa_embudo": resumen.get("etapa_embudo", "Descubrimiento"),
+                        "prioridad": resumen.get("prioridad", "Media"),
+                        "justificacion_score": resumen.get("justificacion_score", ""),
+                        "accion_sugerida": resumen.get("accion_sugerida", "Derivar a especialista"),
+                        "estado_tecnico": "Esperando Aprobacion",
+                    })
+                    st.session_state["resumen_generado"] = resumen
+                except Exception as e:
+                    st.error(f"Error al guardar el resumen: {e}")
+
+            if "resumen_generado" in st.session_state:
+                st.success("Gracias! Un asesor va a revisar tu caso.")
+                st.json(st.session_state["resumen_generado"])
+                if "datos_negocio" in st.session_state:
+                    st.caption("Datos financieros del negocio compartidos:")
+                    st.json(st.session_state["datos_negocio"])
 
 st.divider()
 

@@ -1,0 +1,262 @@
+/* =====================================================
+   Futuro Academy -- Estilo "Libro contable editorial"
+   Crema calido + tinta navy + verde esmeralda (crecimiento)
+   Tipografia serif en titulos, bordes tipo recibo (no todo
+   redondeado), sin sombras genericas de SaaS.
+   ===================================================== */
+
+:root {
+    --crema:        #FAF6EE;
+    --tinta:        #16233F;
+    --tinta-suave:  #2E3A54;
+    --esmeralda:    #1B7F5C;
+    --esmeralda-osc:#145C43;
+    --ambar:        #C98A2C;
+    --linea:        #D9CFBB;
+}
+
+/* Fondo general con textura de papel calido */
+[data-testid="stAppViewContainer"] {
+    background-color: var(--crema);
+}
+
+[data-testid="stHeader"] {
+    background-color: var(--crema);
+}
+
+/* ===== Tipografia ===== */
+h1, h2, h3 {
+    font-family: Georgia, "Times New Roman", serif !important;
+    color: var(--tinta) !important;
+    letter-spacing: -0.01em;
+}
+
+h1 {
+    font-size: 2.4rem !important;
+    font-weight: 700 !important;
+    border-bottom: none !important;
+    position: relative;
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.3rem !important;
+}
+
+/* Linea doble tipo "encabezado de estado de cuenta" bajo el h1 */
+h1::after {
+    content: "";
+    display: block;
+    margin-top: 0.5rem;
+    height: 3px;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--esmeralda) 0px, var(--esmeralda) 18px,
+        transparent 18px, transparent 26px
+    );
+}
+
+p, span, label, .stMarkdown {
+    color: var(--tinta-suave);
+}
+
+/* ===== Caption: se ve como un sello de "cuenta activa" ===== */
+.stCaption, [data-testid="stCaptionContainer"] {
+    display: inline-block;
+    background: transparent;
+    border: 1.5px solid var(--esmeralda);
+    color: var(--esmeralda-osc) !important;
+    font-family: ui-monospace, "Courier New", monospace;
+    font-size: 0.78rem !important;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.35rem 0.9rem;
+    border-radius: 999px;
+    font-weight: 700;
+}
+
+/* ===== Botones: pill outline que se rellena al hover ===== */
+.stButton > button {
+    background-color: transparent;
+    color: var(--esmeralda-osc);
+    border: 1.5px solid var(--esmeralda);
+    border-radius: 999px;
+    padding: 0.5rem 1.5rem;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: all 0.18s ease;
+    box-shadow: none;
+}
+
+.stButton > button:hover {
+    background-color: var(--esmeralda);
+    color: var(--crema);
+    border-color: var(--esmeralda);
+}
+
+.stButton > button:active {
+    background-color: var(--esmeralda-osc);
+}
+
+/* Boton de submit del formulario: acento ambar (llamado a accion distinto) */
+[data-testid="stFormSubmitButton"] > button {
+    background-color: var(--ambar);
+    color: var(--tinta);
+    border: 1.5px solid var(--ambar);
+}
+
+[data-testid="stFormSubmitButton"] > button:hover {
+    background-color: #B67A20;
+    border-color: #B67A20;
+    color: var(--crema);
+}
+
+/* ===== Inputs: sin redondeo total, estilo "casilla de formulario impreso" ===== */
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input {
+    background-color: #FFFFFF;
+    border: none !important;
+    border-bottom: 2px solid var(--linea) !important;
+    border-radius: 2px !important;
+    color: var(--tinta) !important;
+    padding: 0.6rem 0.7rem !important;
+}
+
+.stTextInput input:focus,
+.stTextArea textarea:focus,
+.stNumberInput input:focus {
+    border-bottom: 2px solid var(--esmeralda) !important;
+    box-shadow: none !important;
+}
+
+/* Placeholder con mas contraste -- antes se veia casi invisible
+   sobre fondo blanco */
+.stTextInput input::placeholder,
+.stTextArea textarea::placeholder {
+    color: #6B7280 !important;
+    opacity: 1 !important;
+}
+
+/* ===== Alertas: borde izquierdo grueso tipo "recibo", esquinas rectas ===== */
+.stAlert {
+    border-radius: 4px;
+    border-left-width: 5px !important;
+    box-shadow: none !important;
+}
+
+/* ===== Tarjetas (recuadros) para cada bloque del flujo ===== */
+/* st.container(border=True, key="algo") le pone la clase st-key-algo
+   directamente al bloque -- apuntamos ahi, sin depender de testids
+   internos de Streamlit que cambian entre versiones. */
+.st-key-tarjeta-encabezado,
+.st-key-tarjeta-paso1,
+.st-key-tarjeta-paso2 {
+    background-color: #FFFFFF;
+    border-radius: 6px;
+    padding: 1.5rem 1.7rem 1.7rem;
+    margin-bottom: 1.3rem;
+    border: 1px solid var(--linea);
+    border-left: 5px solid var(--esmeralda);
+    box-shadow: 0 2px 6px rgba(22, 35, 63, 0.08);
+}
+
+.st-key-tarjeta-encabezado {
+    border-left-color: var(--ambar);
+}
+
+/* Streamlit tambien dibuja su propio borde por defecto en el
+   contenedor con border=True; lo quitamos para no duplicarlo
+   con el nuestro. */
+.st-key-tarjeta-encabezado [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-tarjeta-paso1 [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-tarjeta-paso2 [data-testid="stVerticalBlockBorderWrapper"] {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+/* ===== Sello "Paso N" dentro de las tarjetas del flujo =====
+   app.py solo pone un st.caption(...) normal dentro de un
+   st.container(border=True, key="tarjeta-pasoN"); aqui lo
+   convertimos de pill (estilo por defecto de .stCaption) a
+   eyebrow solido, sin tocar HTML en app.py. */
+.st-key-tarjeta-paso1 [data-testid="stCaptionContainer"],
+.st-key-tarjeta-paso2 [data-testid="stCaptionContainer"] {
+    display: block;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    font-family: ui-monospace, "Courier New", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--esmeralda-osc) !important;
+    font-weight: 700;
+    margin-bottom: 0.9rem;
+}
+
+.st-key-tarjeta-encabezado [data-testid="stCaptionContainer"] {
+    display: block;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    font-family: Georgia, serif;
+    font-size: 0.95rem;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--tinta-suave) !important;
+    font-weight: 400;
+}
+
+/* ===== Formulario del negocio: tarjeta tipo "hoja de balance" ===== */
+[data-testid="stForm"] {
+    background-color: #FFFFFF;
+    padding: 1.6rem 1.8rem;
+    border-radius: 4px;
+    border: none;
+    border-left: 5px solid var(--tinta);
+    box-shadow: 0 1px 3px rgba(22, 35, 63, 0.08);
+}
+
+/* ===== Expander: se ve como una linea de "ver detalle" de estado de cuenta ===== */
+[data-testid="stExpander"] {
+    border-radius: 4px;
+    border: 1px solid var(--linea);
+    background-color: #FFFFFF;
+}
+
+/* ===== Divider: linea punteada tipo "corte de recibo" ===== */
+hr {
+    border: none !important;
+    border-top: 2px dashed var(--linea) !important;
+    margin: 2.2rem 0 !important;
+}
+
+/* ===== Radio buttons del quiz: se ven como items de una lista de chequeo ===== */
+.stRadio {
+    background-color: #FFFFFF;
+    border-left: 3px solid var(--esmeralda);
+    padding: 0.9rem 1rem;
+    border-radius: 3px;
+    margin-bottom: 0.6rem;
+}
+
+.stRadio > label {
+    font-weight: 700;
+    color: var(--tinta) !important;
+    font-family: Georgia, serif;
+}
+
+/* ===== JSON del resumen comercial: estilo "ficha impresa" ===== */
+[data-testid="stJson"] {
+    border: 1px solid var(--linea);
+    border-radius: 4px;
+    background-color: #FFFFFF !important;
+}
+
+/* ===== Subheader del quiz ===== */
+h3 {
+    font-style: italic;
+}

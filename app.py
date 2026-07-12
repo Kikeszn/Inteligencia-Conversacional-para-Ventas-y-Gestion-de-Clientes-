@@ -15,8 +15,10 @@ from llm_client import (
     iniciar_chat_tutor,
 )
 from prompts.quiz import calificar_quiz
+from styles import cargar_css
 
-st.title("Asistente Futuro Academy")
+st.title("Asistente Future Academy")
+cargar_css()
 
 CONCEPTO_DEMO = "interes compuesto"
 

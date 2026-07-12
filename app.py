@@ -26,14 +26,6 @@ cargar_css()
 
 st.title("Asistente Future Academy")
 
-
-def _mostrar_error_llm(e: Exception) -> None:
-    """Mensaje amigable cuando falla una llamada al LLM. El detalle
-    tecnico va en un expander colapsado, no directamente en pantalla."""
-    st.error("Hubo un problema de conexión con el asistente. Por favor intenta de nuevo en unos segundos.")
-    with st.expander("Detalles técnicos (para depuración)", expanded=False):
-        st.code(str(e))
-
 # =========================================================================
 # INICIALIZACIÓN DE ESTADOS
 # =========================================================================
@@ -119,12 +111,9 @@ elif st.session_state["estado_ui"] == "chat_libre":
 
             if agente_destino == "tutor":
                 # Derivar al modelo tutor de forma transparente
-                try:
-                    respuesta = enviar_mensaje_tutor(st.session_state["chat_tutor"], prompt)
-                    st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
-                    st.rerun()
-                except Exception as e:
-                    _mostrar_error_llm(e)
+                respuesta = enviar_mensaje_tutor(st.session_state["chat_tutor"], prompt)
+                st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+                st.rerun()
 
             elif agente_destino == "comercial":
                 # Derivar al modelo comercial
@@ -136,18 +125,15 @@ elif st.session_state["estado_ui"] == "chat_libre":
                     st.rerun()
                 else:
                     # Chat comercial continuo
-                    try:
-                        respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], prompt)
-                        st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
-                        st.session_state["turno_comercial"] += 1
+                    respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], prompt)
+                    st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+                    st.session_state["turno_comercial"] += 1
 
-                        # Validar el límite de turnos comerciales
-                        if st.session_state["turno_comercial"] >= 3:
-                            st.session_state["estado_ui"] = "resumen_comercial"
+                    # Validar el límite de turnos comerciales
+                    if st.session_state["turno_comercial"] >= 3:
+                        st.session_state["estado_ui"] = "resumen_comercial"
 
-                        st.rerun()
-                    except Exception as e:
-                        _mostrar_error_llm(e)
+                    st.rerun()
 
 # =========================================================================
 # PANTALLAS DE INTERRUPCIÓN (Formularios, Quizzes y Cierres)
@@ -239,19 +225,16 @@ elif st.session_state["estado_ui"] == "preguntar_datos_negocio":
     if col2.button("Prefiero no compartir"):
         st.session_state["datos_negocio_preguntados"] = True
         with st.spinner("Procesando tu consulta..."):
-            try:
-                # Enviar el mensaje que se había quedado en pausa
-                respuesta = enviar_mensaje_comercial(
-                    st.session_state["chat_comercial"],
-                    st.session_state["mensaje_pendiente_comercial"]
-                )
-                st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
-                st.session_state["turno_comercial"] += 1
-                actualizar_lead(st.session_state["lead_id"], {"datos_negocio_compartidos": False})
-                st.session_state["estado_ui"] = "chat_libre"
-                st.rerun()
-            except Exception as e:
-                _mostrar_error_llm(e)
+            # Enviar el mensaje que se había quedado en pausa
+            respuesta = enviar_mensaje_comercial(
+                st.session_state["chat_comercial"],
+                st.session_state["mensaje_pendiente_comercial"]
+            )
+            st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+            st.session_state["turno_comercial"] += 1
+            actualizar_lead(st.session_state["lead_id"], {"datos_negocio_compartidos": False})
+            st.session_state["estado_ui"] = "chat_libre"
+            st.rerun()
 
 elif st.session_state["estado_ui"] == "formulario_negocio":
     st.subheader("Información del negocio")
@@ -281,19 +264,16 @@ elif st.session_state["estado_ui"] == "formulario_negocio":
         mensaje_combinado = f"{st.session_state['mensaje_pendiente_comercial']}\n\n{contexto}"
 
         with st.spinner("Procesando información..."):
-            try:
-                respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], mensaje_combinado)
-                st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
-                st.session_state["turno_comercial"] += 1
+            respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], mensaje_combinado)
+            st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+            st.session_state["turno_comercial"] += 1
 
-                actualizar_lead(st.session_state["lead_id"], {
-                    "datos_negocio_compartidos": True,
-                    **datos_negocio,
-                })
-                st.session_state["estado_ui"] = "chat_libre"
-                st.rerun()
-            except Exception as e:
-                _mostrar_error_llm(e)
+            actualizar_lead(st.session_state["lead_id"], {
+                "datos_negocio_compartidos": True,
+                **datos_negocio,
+            })
+            st.session_state["estado_ui"] = "chat_libre"
+            st.rerun()
 
 # --- CIERRE COMERCIAL: RESUMEN Y BLOQUEO ---
 elif st.session_state["estado_ui"] == "resumen_comercial":

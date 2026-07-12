@@ -2,3 +2,4 @@ streamlit
 google-genai
 pyairtable
 python-dotenv
+tzdata

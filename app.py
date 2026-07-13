@@ -518,7 +518,7 @@ if st.session_state["modo_admin"]:
 
         else:
             with st.form(f"form_editar_{record_id}"):
-                opciones_accion = ["Agendar reunion", "Enviar material educativo", "Derivar a un especialista"]
+                opciones_accion = ["Agendar reunion", "Enviar material educativo", "Derivar a especialista"]
                 nueva_accion = st.selectbox(
                     "Acción final", opciones_accion,
                     index=opciones_accion.index(campos.get("accion_final"))

@@ -18,7 +18,6 @@ Sistema de dos agentes de IA (Tutor educativo + Comercial) que conversan con el 
 - [Cómo correr el proyecto](#cómo-correr-el-proyecto)
 - [Despliegue](#despliegue)
 - [Flujo funcional](#flujo-funcional)
-- [Tabla de pruebas](#tabla-de-pruebas)
 - [Uso de la API de Gemini](#uso-de-la-api-de-gemini)
 - [Alcance y limitaciones](#alcance-y-limitaciones)
 
@@ -90,7 +89,7 @@ proyecto/
 │   ├── style.css                 # Estilos (paleta, tipografía, componentes)
 │   └── images/logo.png           # Logo del proyecto
 ├── requirements.txt
-├── startup.sh                  # Arranque para despliegue (Cloudflare Tunnel)
+├── startup.sh                  # Comando de arranque para Azure App Service
 ├── .env.example                 # Plantilla de variables de entorno
 └── .gitignore
 ```
@@ -177,9 +176,19 @@ La app abre automáticamente en `http://localhost:8501`.
 
 ## Despliegue
 
-**Opción A — Streamlit Community Cloud** (recomendada): conectar el repositorio en [share.streamlit.io](https://share.streamlit.io), configurar `app.py` como archivo principal, y pegar las mismas variables de entorno en *Settings → Secrets*.
+**Opción A — Streamlit Community Cloud** (recomendada para jurado/demo rápida): conectar el repositorio en [share.streamlit.io](https://share.streamlit.io), configurar `app.py` como archivo principal, y pegar las mismas variables de entorno en *Settings → Secrets*.
 
-**Opción B — Cloudflare Tunnel** (para exponer una instancia corriendo localmente): el proyecto incluye `startup.sh`, que levanta la app en el puerto 8000 lista para ser expuesta por `cloudflared`.
+**Opción B — Azure Web App:** [https://futuro-academy.azurewebsites.net/](https://futuro-academy.azurewebsites.net/)
+
+Desplegado sobre Azure App Service (Linux, plan `F1` gratuito, región `eastus`). `startup.sh` es el comando de arranque que usa Azure para levantar la app:
+
+```bash
+python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true
+```
+
+Las variables de entorno (`GEMINI_API_KEY`, `AIRTABLE_TOKEN`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME`) se configuran en *Azure Portal → futuro-academy → Configuración → Variables de entorno de la aplicación*, no en un archivo `.env` (ese nunca se sube).
+
+> **Nota:** el plan `F1` es gratuito pero tiene cuota de cómputo limitada (60 min/día) y puede tardar unos segundos en "despertar" si nadie lo visitó recientemente. Si la demo en vivo es crítica, visita el link unos minutos antes de presentar.
 
 ## Flujo funcional
 
@@ -188,18 +197,6 @@ La app abre automáticamente en `http://localhost:8501`.
 3. **Si es el Tutor:** responde citando la fuente y evitando inventar cifras reales (regla de antialucinación). El usuario puede pedir un quiz de 3 preguntas generado a partir de lo conversado; al responderlo se le pide consentimiento explícito antes de registrar su interés como señal comercial.
 4. **Si es el Comercial:** en su primer mensaje pregunta explícitamente si el prospecto es B2B o B2C, ofrece la opción de compartir datos financieros del negocio (formulario opcional), y perfila al prospecto en un máximo de 3 intercambios.
 5. Al cerrar la conversación comercial, se genera un resumen estructurado (necesidad, objeciones, etapa del embudo, prioridad, acción sugerida) y el lead queda con `estado_tecnico = Esperando Aprobacion`, a la espera de que un ejecutivo humano apruebe la siguiente acción.
-
-## Tabla de pruebas
-
-| Input | Esperado | Obtenido |
-|---|---|---|
-| "Quiero aprender sobre el interés compuesto" | El Enrutador deriva al Tutor | |
-| "Necesito un asesor para mi empresa" | El Enrutador deriva al Comercial | |
-| Responder el quiz del Tutor y aceptar el consentimiento | `consentimiento = True`, `estado_tecnico = Transferido` en Airtable | |
-| Completar 3 turnos con el Comercial | Se genera el resumen JSON y `estado_tecnico = Esperando Aprobacion` | |
-| Llenar el formulario de datos del negocio | `datos_negocio_compartidos = True` + campos financieros guardados | |
-
-*(Completar la columna "Obtenido" con capturas o resultados reales antes de la entrega.)*
 
 ## Uso de la API de Gemini
 
@@ -210,4 +207,3 @@ Este proyecto usa la **API de Gemini de Google** (`google-genai`, modelo `gemini
 - El flujo B2B del Comercial usa el mismo agente que el B2C; el campo `tipo_prospecto` ya está en el modelo de datos y se completa automáticamente al identificar la intención.
 - Si el usuario no da su consentimiento en el Tutor, el sistema no guarda ninguna señal comercial y respeta esa decisión.
 - Las acciones sugeridas por el Comercial (agendar reunión, enviar material, derivar a especialista) quedan como propuesta: un ejecutivo humano debe aprobarlas antes de ejecutarse.
-

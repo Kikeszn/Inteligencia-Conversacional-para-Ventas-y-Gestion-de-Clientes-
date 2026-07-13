@@ -179,16 +179,23 @@ elif st.session_state["estado_ui"] == "chat_libre":
                     st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
                     st.session_state["turno_comercial"] += 1
 
+                    # Volvemos siempre a chat_libre primero, para que el
+                    # usuario vea y responda esta primera pregunta de
+                    # perfilamiento con normalidad -- nunca se salta
+                    # directo a una pantalla de interrupcion.
                     # El formulario de datos del negocio (ingresos, activos,
                     # pasivos, deudas) solo tiene sentido para un prospecto
-                    # B2B. Si es B2C, se salta por completo esa pantalla y
-                    # se marca datos_negocio_preguntados=True para que el
-                    # enrutador no la vuelva a mostrar mas adelante.
-                    if tipo == "B2B":
-                        st.session_state["estado_ui"] = "preguntar_datos_negocio"
-                    else:
+                    # B2B. Para B2C se marca datos_negocio_preguntados=True
+                    # de una vez, para que el enrutador nunca la muestre.
+                    # Para B2B se deja en False (su valor inicial): la
+                    # pantalla "preguntar_datos_negocio" se disparara sola,
+                    # de forma natural, cuando el enrutador normal procese
+                    # la respuesta del usuario a esta primera pregunta (ver
+                    # rama "comercial" del enrutador, mas abajo).
+                    if tipo == "B2C":
                         st.session_state["datos_negocio_preguntados"] = True
-                        st.session_state["estado_ui"] = "chat_libre"
+
+                    st.session_state["estado_ui"] = "chat_libre"
                     st.rerun()
                 except Exception as e:
                     _mostrar_error_llm(e)

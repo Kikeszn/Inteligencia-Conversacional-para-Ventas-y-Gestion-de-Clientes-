@@ -10,6 +10,7 @@ from airtable_client import (
 
 from llm_client import (
     clasificar_intencion,
+    clasificar_tipo_prospecto,
     enviar_mensaje_comercial,
     enviar_mensaje_tutor,
     extraer_resumen_comercial,
@@ -20,6 +21,7 @@ from llm_client import (
     iniciar_chat_tutor,
 )
 
+from prompts.comercial_prompt import PREGUNTA_APERTURA_COMERCIAL
 from prompts.quiz import calificar_quiz
 from styles import cargar_css
 
@@ -68,6 +70,8 @@ VALORES_INICIALES_SESSION_STATE = {
     "ultimo_id": None,
     "tema_interes": None,  # Tema central de interes del usuario (1 a 4 palabras)
     "modo_admin": False,
+    "tipo_prospecto_detectado": None,  # "B2B" o "B2C", fuente de verdad para Airtable
+    "esperando_tipo_prospecto": False,  # True mientras se espera la respuesta a la pregunta de apertura
 }
 
 for _clave, _valor in VALORES_INICIALES_SESSION_STATE.items():
@@ -111,9 +115,12 @@ elif st.session_state["estado_ui"] == "pedir_nombre":
                 st.session_state["lead_id"] = lead_id
                 st.session_state["nombre_usuario"] = nombre
 
-                # Inicializar ambas memorias de IA en segundo plano
+                # El chat del Tutor si se puede crear de una vez porque su
+                # system prompt no depende de nada mas. El chat comercial se
+                # crea despues, una vez se sepa si el prospecto es B2B o B2C
+                # (ver clasificar_tipo_prospecto), porque su system prompt
+                # depende de esa clasificacion.
                 st.session_state["chat_tutor"] = iniciar_chat_tutor()
-                st.session_state["chat_comercial"] = iniciar_chat_comercial()
 
                 # Mensaje de bienvenida del sistema unificado
                 msg_bienvenida = f"¡Hola, {nombre}! Soy tu asistente de Future Academy. ¿En qué te puedo ayudar hoy?"
@@ -148,42 +155,88 @@ elif st.session_state["estado_ui"] == "chat_libre":
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # --- AQUÍ VIVE EL ENRUTADOR DINÁMICO ---
         with st.spinner("Pensando..."):
-            agente_destino = clasificar_intencion(prompt)
-            st.session_state["ultimo_agente"] = agente_destino
-
-            if agente_destino == "tutor":
-                # Derivar al modelo tutor de forma transparente
+            if st.session_state["esperando_tipo_prospecto"]:
+                # Este mensaje contesta la pregunta de apertura B2B/B2C que
+                # se hizo mas abajo -- no pasa por el enrutador normal, se
+                # clasifica aparte y con eso se resuelve el system prompt
+                # del Comercial antes de crear su chat real.
                 try:
-                    respuesta = enviar_mensaje_tutor(st.session_state["chat_tutor"], prompt)
+                    tipo = clasificar_tipo_prospecto(prompt)
+                    st.session_state["tipo_prospecto_detectado"] = tipo
+                    st.session_state["esperando_tipo_prospecto"] = False
+                    st.session_state["chat_comercial"] = iniciar_chat_comercial(tipo)
+
+                    # Primer intercambio real del Comercial, garantizado por
+                    # codigo: se manda el mensaje original que disparo la
+                    # intencion comercial para que el modelo arranque su
+                    # perfilamiento (con las 3 preguntas ya resueltas en su
+                    # system prompt) antes de preguntar por datos de negocio.
+                    respuesta = enviar_mensaje_comercial(
+                        st.session_state["chat_comercial"],
+                        st.session_state["mensaje_pendiente_comercial"]
+                    )
                     st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+                    st.session_state["turno_comercial"] += 1
+
+                    # El formulario de datos del negocio (ingresos, activos,
+                    # pasivos, deudas) solo tiene sentido para un prospecto
+                    # B2B. Si es B2C, se salta por completo esa pantalla y
+                    # se marca datos_negocio_preguntados=True para que el
+                    # enrutador no la vuelva a mostrar mas adelante.
+                    if tipo == "B2B":
+                        st.session_state["estado_ui"] = "preguntar_datos_negocio"
+                    else:
+                        st.session_state["datos_negocio_preguntados"] = True
+                        st.session_state["estado_ui"] = "chat_libre"
                     st.rerun()
                 except Exception as e:
                     _mostrar_error_llm(e)
+            else:
+                # --- AQUÍ VIVE EL ENRUTADOR DINÁMICO ---
+                agente_destino = clasificar_intencion(prompt)
+                st.session_state["ultimo_agente"] = agente_destino
 
-            elif agente_destino == "comercial":
-                # Derivar al modelo comercial
-                if not st.session_state["datos_negocio_preguntados"]:
-                    # Interrupción: Es la primera vez que detectamos intención comercial.
-                    # Guardamos el mensaje en pausa y pedimos consentimiento.
-                    st.session_state["mensaje_pendiente_comercial"] = prompt
-                    st.session_state["estado_ui"] = "preguntar_datos_negocio"
-                    st.rerun()
-                else:
-                    # Chat comercial continuo
+                if agente_destino == "tutor":
+                    # Derivar al modelo tutor de forma transparente
                     try:
-                        respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], prompt)
+                        respuesta = enviar_mensaje_tutor(st.session_state["chat_tutor"], prompt)
                         st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
-                        st.session_state["turno_comercial"] += 1
-
-                        # Validar el límite de turnos comerciales
-                        if st.session_state["turno_comercial"] >= 3:
-                            st.session_state["estado_ui"] = "resumen_comercial"
-
                         st.rerun()
                     except Exception as e:
                         _mostrar_error_llm(e)
+
+                elif agente_destino == "comercial":
+                    # Derivar al modelo comercial
+                    if st.session_state["tipo_prospecto_detectado"] is None:
+                        # Primera vez que se detecta intención comercial: antes de
+                        # cualquier otra pregunta, preguntamos si es personal o negocio.
+                        st.session_state["mensaje_pendiente_comercial"] = prompt
+                        st.session_state["historial_unificado"].append(
+                            {"rol": "assistant", "contenido": PREGUNTA_APERTURA_COMERCIAL}
+                        )
+                        st.session_state["esperando_tipo_prospecto"] = True
+                        st.rerun()
+                    elif not st.session_state["datos_negocio_preguntados"]:
+                        # Interrupción: ya sabemos B2B/B2C, pero aun no pedimos
+                        # consentimiento para compartir datos del negocio.
+                        st.session_state["mensaje_pendiente_comercial"] = prompt
+                        st.session_state["estado_ui"] = "preguntar_datos_negocio"
+                        st.rerun()
+                    else:
+                        # Chat comercial continuo
+                        try:
+                            respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], prompt)
+                            st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
+                            st.session_state["turno_comercial"] += 1
+
+                            # Validar el límite de turnos comerciales
+                            if st.session_state["turno_comercial"] >= 4:
+                                st.session_state["estado_ui"] = "resumen_comercial"
+
+                            st.rerun()
+                        except Exception as e:
+                            _mostrar_error_llm(e)
 
 # =========================================================================
 # PANTALLAS DE INTERRUPCIÓN (Formularios, Quizzes y Cierres)
@@ -276,10 +329,16 @@ elif st.session_state["estado_ui"] == "preguntar_datos_negocio":
         st.session_state["datos_negocio_preguntados"] = True
         with st.spinner("Procesando tu consulta..."):
             try:
-                # Enviar el mensaje que se había quedado en pausa
+                # mensaje_pendiente_comercial ya se envio como primer
+                # intercambio garantizado justo despues de clasificar el
+                # tipo de prospecto -- reenviarlo aqui lo duplicaria y
+                # inflaria turno_comercial de mas. En su lugar, avisamos
+                # que el usuario prefirio no compartir los datos para que
+                # el modelo continue con su siguiente pregunta de
+                # perfilamiento en vez de repetir la primera.
                 respuesta = enviar_mensaje_comercial(
                     st.session_state["chat_comercial"],
-                    st.session_state["mensaje_pendiente_comercial"]
+                    "Prefiero no compartir esos datos por ahora, sigamos con la conversación."
                 )
                 st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
                 st.session_state["turno_comercial"] += 1
@@ -313,12 +372,17 @@ elif st.session_state["estado_ui"] == "formulario_negocio":
         st.session_state["datos_negocio"] = datos_negocio
         st.session_state["datos_negocio_preguntados"] = True
 
+        # mensaje_pendiente_comercial ya se envio como primer intercambio
+        # garantizado justo despues de clasificar el tipo de prospecto --
+        # reenviarlo aqui (combinado con el contexto financiero) lo
+        # duplicaria e inflaria turno_comercial de mas. Se manda solo el
+        # contexto de los datos del negocio; el chat ya tiene la memoria
+        # de la conversacion previa para entender a que responde.
         contexto = generar_prompt_datos_negocio(datos_negocio)
-        mensaje_combinado = f"{st.session_state['mensaje_pendiente_comercial']}\n\n{contexto}"
 
         with st.spinner("Procesando información..."):
             try:
-                respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], mensaje_combinado)
+                respuesta = enviar_mensaje_comercial(st.session_state["chat_comercial"], contexto)
                 st.session_state["historial_unificado"].append({"rol": "assistant", "contenido": respuesta})
                 st.session_state["turno_comercial"] += 1
 
@@ -342,8 +406,13 @@ elif st.session_state["estado_ui"] == "resumen_comercial":
         resumen = extraer_resumen_comercial(historial_texto)
 
         try:
+            # tipo_prospecto_detectado viene de la clasificacion temprana
+            # (justo tras la pregunta de apertura B2B/B2C) y es la fuente de
+            # verdad; el JSON del extractor solo se usa de respaldo si esa
+            # clasificacion temprana no llego a ocurrir por algun motivo.
+            tipo_prospecto_final = st.session_state["tipo_prospecto_detectado"] or resumen.get("tipo_prospecto", "")
             actualizar_lead(st.session_state["lead_id"], {
-                "tipo_prospecto": resumen.get("tipo_prospecto", ""),
+                "tipo_prospecto": tipo_prospecto_final,
                 "resumen_necesidad": resumen.get("resumen_necesidad", ""),
                 "objeciones": resumen.get("objeciones", ""),
                 "etapa_embudo": resumen.get("etapa_embudo", "Descubrimiento"),

@@ -11,9 +11,10 @@ from google import genai
 from google.genai import types
 
 from prompts.comercial_prompt import (
+    CLASIFICADOR_TIPO_PROSPECTO_PROMPT,
     COMERCIAL_EXTRACTOR_PROMPT,
-    COMERCIAL_SYSTEM_PROMPT,
     construir_contexto_datos_negocio,
+    construir_system_prompt_comercial,
 )
 from prompts.quiz import QUIZ_FALLBACK
 from prompts.router_prompt import ROUTER_PROMPT
@@ -148,11 +149,36 @@ def extraer_tema_interes(historial_texto: str) -> str:
 
 # --- Agente Comercial ---------------------------------------------------
 
-def iniciar_chat_comercial():
+def clasificar_tipo_prospecto(respuesta_usuario: str) -> str:
+    """Clasifica la respuesta a la pregunta de apertura del Comercial
+    (personal vs. negocio) como 'B2B' o 'B2C'. Se llama UNA sola vez,
+    justo despues de esa pregunta, con el mismo patron de validacion que
+    clasificar_intencion (si el valor no es exactamente uno de los dos
+    permitidos, usa 'B2C' por defecto)."""
+    prompt = f"{CLASIFICADOR_TIPO_PROSPECTO_PROMPT}\n\nRespuesta del usuario: {respuesta_usuario}"
+    try:
+        respuesta = _client.models.generate_content(
+            model=_MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+        resultado = json.loads(respuesta.text)
+        tipo = resultado.get("tipo_prospecto", "B2C")
+        return tipo if tipo in ("B2B", "B2C") else "B2C"
+    except Exception:
+        return "B2C"
+
+
+def iniciar_chat_comercial(tipo_prospecto: str):
+    """Crea la sesion de chat del Comercial ya con el placeholder
+    {PREGUNTAS_CONFIGURABLES} resuelto segun el tipo de prospecto
+    clasificado por clasificar_tipo_prospecto."""
     return _client.chats.create(
         model=_MODEL_NAME,
         config=types.GenerateContentConfig(
-            system_instruction=COMERCIAL_SYSTEM_PROMPT,
+            system_instruction=construir_system_prompt_comercial(tipo_prospecto),
         ),
     )
 

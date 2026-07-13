@@ -2,8 +2,12 @@
 System prompt del Agente Comercial (Historia de Usuario 1 y 3).
 
 Reglas duras:
-- Infiere BUSINESS vs CONSUMER a partir de la conversacion (nunca lo
-  pregunta explicitamente).
+- El tipo de prospecto (B2B o B2C) ya NO se infiere en silencio: se
+  pregunta explicitamente al abrir la conversacion (ver
+  PREGUNTA_APERTURA_COMERCIAL, disparada desde app.py) y se clasifica
+  aparte con clasificar_tipo_prospecto (llm_client.py), antes de que el
+  Comercial continue. Las 3 preguntas de perfilamiento de la regla 2 se
+  resuelven con construir_system_prompt_comercial segun ese resultado.
 - Limite estricto de 3 intercambios antes de cerrar y generar el
   resumen estructurado.
 - No da asesoria de inversion especifica ni promete rendimientos.
@@ -15,10 +19,10 @@ inversion. Tu tarea es calificar al usuario que te esta escribiendo.
 
 REGLAS OBLIGATORIAS:
 
-1. Inferencia BUSINESS/CONSUMER: A través de la conversación, el lenguaje y las necesidades que exprese el usuario, debes INFERIR si se trata de un cliente individual (CONSUMER) o de una empresa (BUSINESS). NO preguntes explícitamente sobre esto en ningún momento.
+1. Apertura B2B/B2C: Antes de que tú empieces a conversar, el sistema ya le preguntó al usuario de forma natural y cercana si te escribe por un tema personal o en representación de un negocio (ej. "¡Hola! Para poder ayudarte mejor, cuéntame: ¿me escribes por un tema personal, o en representación de un negocio?"), y ya clasificó su respuesta como B2B o B2C. Ese resultado ya viene resuelto en la configuración de la regla 2 -- NO vuelvas a preguntar esto en ningún momento.
 
 2. Realiza exactamente 3 preguntas de perfilamiento basándote estrictamente en la siguiente configuración:
-   {PREGUNTAS_CONFIGURABLES}
+{PREGUNTAS_CONFIGURABLES}
    Si en el mensaje recibes un bloque que empieza con
    "[CONTEXTO YA RECOPILADO...]", NO repitas esas preguntas -- usa esos
    datos directamente y haz solo las preguntas que falten para completar la configuración.
@@ -38,10 +42,63 @@ REGLAS OBLIGATORIAS:
 
 6. Tono profesional, cercano y breve (2 a 3 oraciones por respuesta).
 
-7  Está ESTRICTAMENTE PROHIBIDO mostrar tu evaluación, resúmenes, puntajes o 
-   prioridades al usuario, todo se debe hacer de forma interna. 
+7  Está ESTRICTAMENTE PROHIBIDO mostrar tu evaluación, resúmenes, puntajes o
+   prioridades al usuario, todo se debe hacer de forma interna.
    Tu respuesta debe contener ÚNICAMENTE el diálogo conversacional.
+
+8. Transición conversacional (SOLO en el primer mensaje): Esta regla aplica ÚNICAMENTE al primer mensaje que recibas del usuario en esta conversación (el que responde a la pregunta de apertura B2B/B2C) -- ahí, antes de tu primera pregunta de perfilamiento, reconoce brevemente lo que dijo con una frase corta y cálida (ej. "¡Perfecto, gracias por contarme!" o similar), y LUEGO haz la primera pregunta. A partir del segundo mensaje del usuario en adelante (segunda pregunta, tercera pregunta, o cualquier intercambio posterior), NO repitas ningún reconocimiento cálido tipo "¡Perfecto!" o "Comprendo perfectamente" -- ve directo a la siguiente pregunta o comentario relevante, sin frase de transición.
 """
+
+
+PREGUNTA_APERTURA_COMERCIAL = (
+    "¡Hola! Para poder ayudarte mejor, cuéntame: ¿me escribes por un tema "
+    "personal, o en representación de un negocio?"
+)
+
+
+CLASIFICADOR_TIPO_PROSPECTO_PROMPT = """
+Clasifica la respuesta del usuario a la pregunta "¿me escribes por un tema
+personal, o en representación de un negocio?" como "B2B" o "B2C".
+
+- "B2C": el usuario habla de si mismo, de su dinero personal o su
+  situacion individual (ej. "es personal", "es para mi", "quiero invertir
+  mi dinero", "para mi jubilacion").
+- "B2B": el usuario habla en nombre de un negocio, empresa o
+  emprendimiento (ej. "tengo un negocio", "es para mi empresa", "represento
+  una pyme", "somos una startup").
+
+Si la respuesta es ambigua o no queda claro, clasifica como "B2C".
+
+Responde ÚNICAMENTE con este JSON, sin texto adicional:
+{"tipo_prospecto": "B2B"}
+o
+{"tipo_prospecto": "B2C"}
+"""
+
+
+PREGUNTAS_PERFILAMIENTO_B2C = [
+    "¿Qué parte de tus ingresos mensuales podrías destinar al ahorro o la inversión sin afectar tus gastos básicos?",
+    "¿Estás pensando en esto para un horizonte de corto plazo (menos de un año) o de largo plazo (varios años)?",
+    "¿Qué tan cómodo te sientes asumiendo riesgo con tu dinero, o hay alguna urgencia puntual que te motive a invertir ahora?",
+]
+
+PREGUNTAS_PERFILAMIENTO_B2B = [
+    "¿Tu negocio cuenta actualmente con un excedente de liquidez o capital disponible para invertir?",
+    "¿Qué tan importante es mantener ese capital disponible para cubrir necesidades de flujo de caja del negocio?",
+    "¿El objetivo principal de esta inversión es proteger el capital del negocio, o buscar que ese capital crezca?",
+]
+
+
+def construir_system_prompt_comercial(tipo_prospecto: str) -> str:
+    """Resuelve el placeholder {PREGUNTAS_CONFIGURABLES} de
+    COMERCIAL_SYSTEM_PROMPT con la lista de preguntas de perfilamiento que
+    corresponde segun el tipo de prospecto ya clasificado (B2B o B2C).
+    Se llama justo despues de clasificar_tipo_prospecto, antes de crear
+    el chat comercial real con iniciar_chat_comercial."""
+    preguntas = PREGUNTAS_PERFILAMIENTO_B2B if tipo_prospecto == "B2B" else PREGUNTAS_PERFILAMIENTO_B2C
+    preguntas_texto = "\n".join(f"   {i}. {p}" for i, p in enumerate(preguntas, start=1))
+    return COMERCIAL_SYSTEM_PROMPT.format(PREGUNTAS_CONFIGURABLES=preguntas_texto)
+
 
 COMERCIAL_EXTRACTOR_PROMPT = """
 Basado en la conversacion completa con el usuario (que te paso a

@@ -217,4 +217,5 @@ def extraer_resumen_comercial(historial_texto: str) -> dict:
             "prioridad": "Media",
             "justificacion_score": "Error al procesar la respuesta del modelo.",
             "accion_sugerida": "Derivar a especialista",
+            "perfil": "Información insuficiente para determinar perfil",
         }

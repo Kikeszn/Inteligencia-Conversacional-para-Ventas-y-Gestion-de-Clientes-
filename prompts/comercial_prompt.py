@@ -112,7 +112,8 @@ exacto, sin texto adicional:
   "etapa_embudo": "Descubrimiento, Consideracion o Decision",
   "prioridad": "Alta, Media o Baja",
   "justificacion_score": "explicacion breve de por que le diste esa prioridad en máximo 30 palabras",
-  "accion_sugerida": "Agendar reunion, Enviar material educativo o Derivar a especialista"
+  "accion_sugerida": "Agendar reunion, Enviar material educativo o Derivar a especialista",
+  "perfil": "parrafo corto (maximo 30 palabras) que describa COMO es el usuario como inversor -- tolerancia al riesgo, horizonte de tiempo, tipo conservador/moderado/agresivo -- basado en sus respuestas a las 3 preguntas de perfilamiento de la conversacion. Este campo es DISTINTO de resumen_necesidad: resumen_necesidad describe QUE necesita el usuario, perfil describe COMO es. No repitas contenido entre ambos campos. Si no hay informacion suficiente en la conversacion para determinarlo, escribe exactamente 'Información insuficiente para determinar perfil' en vez de inventar."
 }
 
 Conversacion:

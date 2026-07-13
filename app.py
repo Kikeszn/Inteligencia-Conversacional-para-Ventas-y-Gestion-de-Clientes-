@@ -426,6 +426,7 @@ elif st.session_state["estado_ui"] == "resumen_comercial":
                 "prioridad": resumen.get("prioridad", "Media"),
                 "justificacion_score": resumen.get("justificacion_score", ""),
                 "accion_sugerida": resumen.get("accion_sugerida", ""),
+                "perfil": resumen.get("perfil", "No especificado"),
                 "estado_tecnico": "Esperando Aprobacion",
             })
             st.session_state["resumen_generado"] = resumen

@@ -74,7 +74,7 @@ with st.sidebar:
     if not st.session_state["modo_admin"]:
         st.subheader("Acceso ejecutivo")
         clave_ingresada = st.text_input("Contraseña", type="password", key="clave_admin_input")
-        if st.button("🔐 Administrar"):
+        if st.button("Administrar"):
             clave_correcta = _obtener_admin_password()
             if clave_correcta and clave_ingresada == clave_correcta:
                 st.session_state["modo_admin"] = True
@@ -343,7 +343,8 @@ elif st.session_state["estado_ui"] == "resumen_comercial":
 # PANEL EJECUTIVO: APROBAR, EDITAR O RECHAZAR PROPUESTAS
 # =========================================================================
 if st.session_state["modo_admin"]:
-    st.header("📋 Panel Ejecutivo -- Leads pendientes de confirmación")
+    st.header("Panel Ejecutivo")
+    st.subheader("Leads pendientes de confirmación")
 
     try:
         pendientes = leer_leads_pendientes()
@@ -386,7 +387,7 @@ if st.session_state["modo_admin"]:
         if not st.session_state[editando_key]:
             col1, col2, col3 = st.columns(3)
 
-            if col1.button("✅ Aprobar", key=f"aprobar_{record_id}"):
+            if col1.button("Aprobar", key=f"aprobar_{record_id}"):
                 if not comentario_texto.strip():
                     st.warning("Debes escribir un comentario antes de aprobar.")
                 else:
@@ -400,11 +401,11 @@ if st.session_state["modo_admin"]:
                     except Exception as e:
                         st.error(f"Error al aprobar: {e}")
 
-            if col2.button("✏️ Editar", key=f"editar_{record_id}"):
+            if col2.button("Editar", key=f"editar_{record_id}"):
                 st.session_state[editando_key] = True
                 st.rerun()
 
-            if col3.button("❌ Rechazar", key=f"rechazar_{record_id}"):
+            if col3.button("Rechazar", key=f"rechazar_{record_id}"):
                 if not comentario_texto.strip():
                     st.warning("Debes escribir un comentario antes de rechazar.")
                 else:
@@ -431,7 +432,7 @@ if st.session_state["modo_admin"]:
                                                    value=campos.get("justificacion_score", ""))
 
                 col_g, col_c = st.columns(2)
-                guardar = col_g.form_submit_button("💾 Guardar y aprobar")
+                guardar = col_g.form_submit_button("Guardar y aprobar")
                 cancelar = col_c.form_submit_button("Cancelar")
 
             if guardar:

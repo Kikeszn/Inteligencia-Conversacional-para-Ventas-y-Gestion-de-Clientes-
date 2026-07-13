@@ -1,4 +1,5 @@
 import datetime
+import os
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -26,6 +27,17 @@ cargar_css()
 
 st.title("Asistente Future Academy")
 
+
+def _obtener_admin_password() -> str:
+    password = os.getenv("ADMIN_PASSWORD")
+    if password:
+        return password
+    try:
+        return st.secrets["ADMIN_PASSWORD"]
+    except Exception:
+        return None
+
+
 # =========================================================================
 # INICIALIZACIÓN DE ESTADOS
 # =========================================================================
@@ -47,16 +59,40 @@ VALORES_INICIALES_SESSION_STATE = {
     "resumen_generado": None,
     "ultimo_id": None,
     "tema_interes": None,  # Tema central de interes del usuario (1 a 4 palabras)
+    "modo_admin": False,
 }
 
 for _clave, _valor in VALORES_INICIALES_SESSION_STATE.items():
     if _clave not in st.session_state:
         st.session_state[_clave] = _valor
 
+
+# =========================================================================
+# SIDEBAR: ACCESO AL MODO ADMINISTRADOR
+# =========================================================================
+with st.sidebar:
+    if not st.session_state["modo_admin"]:
+        st.subheader("Acceso ejecutivo")
+        clave_ingresada = st.text_input("Contraseña", type="password", key="clave_admin_input")
+        if st.button("🔐 Administrar"):
+            clave_correcta = _obtener_admin_password()
+            if clave_correcta and clave_ingresada == clave_correcta:
+                st.session_state["modo_admin"] = True
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
+    else:
+        st.success("Modo administrador activo")
+        if st.button("Salir del modo administrador"):
+            st.session_state["modo_admin"] = False
+            st.rerun()
+
 # =========================================================================
 # PANTALLA 1: REGISTRO INICIAL
 # =========================================================================
-if st.session_state["estado_ui"] == "pedir_nombre":
+if st.session_state["modo_admin"]:
+    pass  # El panel admin se muestra al final del archivo
+elif st.session_state["estado_ui"] == "pedir_nombre":
     nombre = st.text_input("¿Cómo te llamas?")
     if st.button("Comenzar Chat"):
         if not nombre.strip():
@@ -302,3 +338,122 @@ elif st.session_state["estado_ui"] == "resumen_comercial":
 
     if st.session_state["resumen_generado"] is not None:
         st.success("¡Gracias! Un asesor humano va a revisar tu caso para contactarte.")
+
+# =========================================================================
+# PANEL EJECUTIVO: APROBAR, EDITAR O RECHAZAR PROPUESTAS
+# =========================================================================
+if st.session_state["modo_admin"]:
+    st.header("📋 Panel Ejecutivo -- Leads pendientes de confirmación")
+
+    try:
+        pendientes = leer_leads_pendientes()
+    except Exception as e:
+        pendientes = []
+        st.error(f"Error al cargar leads pendientes: {e}")
+
+    if not pendientes:
+        st.info("No hay leads esperando confirmación en este momento.")
+
+    for lead in pendientes:
+        record_id = lead["id"]
+        campos = lead.get("fields", {})
+        editando_key = f"editando_{record_id}"
+        comentario_key = f"comentario_{record_id}"
+
+        if editando_key not in st.session_state:
+            st.session_state[editando_key] = False
+
+        st.markdown(f"### {campos.get('nombre_usuario', 'Sin nombre')}")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.write(f"**Tipo de prospecto:** {campos.get('tipo_prospecto', '-')}")
+            st.write(f"**Prioridad:** {campos.get('prioridad', '-')}")
+            st.write(f"**Etapa del embudo:** {campos.get('etapa_embudo', '-')}")
+        with col_b:
+            st.write(f"**Acción sugerida:** {campos.get('accion_final', '-')}")
+            st.write(f"**Objeciones:** {campos.get('objeciones', 'Ninguna')}")
+
+        st.write(f"**Necesidad:** {campos.get('resumen_necesidad', '-')}")
+        st.write(f"**Justificación del score:** {campos.get('justificacion_score', '-')}")
+
+        # Comentario del ejecutivo: siempre visible, se guarda junto con la decisión
+        comentario_texto = st.text_area(
+            "Comentario / observaciones",
+            value=campos.get("comentario_ejecutivo", ""),
+            key=comentario_key,
+        )
+
+        if not st.session_state[editando_key]:
+            col1, col2, col3 = st.columns(3)
+
+            if col1.button("✅ Aprobar", key=f"aprobar_{record_id}"):
+                if not comentario_texto.strip():
+                    st.warning("Debes escribir un comentario antes de aprobar.")
+                else:
+                    try:
+                        actualizar_lead(record_id, {
+                            "decision_ejecutivo": "Aprobado",
+                            "comentario_ejecutivo": comentario_texto,
+                        })
+                        st.success("Lead aprobado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al aprobar: {e}")
+
+            if col2.button("✏️ Editar", key=f"editar_{record_id}"):
+                st.session_state[editando_key] = True
+                st.rerun()
+
+            if col3.button("❌ Rechazar", key=f"rechazar_{record_id}"):
+                if not comentario_texto.strip():
+                    st.warning("Debes escribir un comentario antes de rechazar.")
+                else:
+                    try:
+                        actualizar_lead(record_id, {
+                            "decision_ejecutivo": "Rechazado",
+                            "comentario_ejecutivo": comentario_texto,
+                        })
+                        st.warning("Lead rechazado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al rechazar: {e}")
+
+        else:
+            with st.form(f"form_editar_{record_id}"):
+                opciones_accion = ["Agendar reunion", "Enviar material educativo", "Derivar a un especialista"]
+                nueva_accion = st.selectbox(
+                    "Acción final", opciones_accion,
+                    index=opciones_accion.index(campos.get("accion_final"))
+                    if campos.get("accion_final") in opciones_accion else 2,
+                )
+                nuevo_resumen = st.text_area("Resumen de la necesidad", value=campos.get("resumen_necesidad", ""))
+                nueva_justificacion = st.text_area("Justificación del score",
+                                                   value=campos.get("justificacion_score", ""))
+
+                col_g, col_c = st.columns(2)
+                guardar = col_g.form_submit_button("💾 Guardar y aprobar")
+                cancelar = col_c.form_submit_button("Cancelar")
+
+            if guardar:
+                if not comentario_texto.strip():
+                    st.warning("Debes escribir un comentario antes de guardar.")
+                else:
+                    try:
+                        actualizar_lead(record_id, {
+                            "accion_final": nueva_accion,
+                            "resumen_necesidad": nuevo_resumen,
+                            "justificacion_score": nueva_justificacion,
+                            "decision_ejecutivo": "Editado y Aprobado",
+                            "comentario_ejecutivo": comentario_texto,
+                        })
+                        st.session_state[editando_key] = False
+                        st.success("Cambios guardados y lead aprobado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar cambios: {e}")
+
+            if cancelar:
+                st.session_state[editando_key] = False
+                st.rerun()
+
+        st.divider()

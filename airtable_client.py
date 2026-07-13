@@ -27,7 +27,7 @@ def actualizar_lead(record_id: str, campos: dict) -> None:
 
 
 def leer_leads_pendientes() -> list[dict]:
-    """Retorna los leads que esperan aprobacion del ejecutivo."""
+    """Retorna los leads que esperan confirmación del ejecutivo."""
     return _table.all(
-        formula="{estado_tecnico} = 'Esperando Aprobacion'"
+        formula="{decision_ejecutivo} = 'Esperando Confirmacion'"
     )

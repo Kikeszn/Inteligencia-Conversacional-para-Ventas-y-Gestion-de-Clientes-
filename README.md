@@ -135,6 +135,7 @@ AIRTABLE_TABLE_NAME=Leads
 | `AIRTABLE_TOKEN` | [airtable.com/create/tokens](https://airtable.com/create/tokens), con permisos `data.records:read` y `data.records:write` sobre tu base |
 | `AIRTABLE_BASE_ID` | Se ve en la URL de tu base (`airtable.com/appXXXXXXXXXXXXXX/...`) |
 | `AIRTABLE_TABLE_NAME` | El nombre exacto de tu tabla, por defecto `Leads` |
+| `AIRTABLE_TABLE_NAME` | La contraseña puesta fue `miclave123` |
 
 **El archivo `.env` nunca se sube al repositorio** (ya está en `.gitignore`).
 
@@ -186,7 +187,7 @@ Desplegado sobre Azure App Service (Linux, plan `F1` gratuito, región `eastus`)
 python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true
 ```
 
-Las variables de entorno (`GEMINI_API_KEY`, `AIRTABLE_TOKEN`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME`) se configuran en *Azure Portal → futuro-academy → Configuración → Variables de entorno de la aplicación*, no en un archivo `.env` (ese nunca se sube).
+Las variables de entorno (`GEMINI_API_KEY`, `AIRTABLE_TOKEN`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME`, `ADMIN_PASSWORD`) se configuran en *Azure Portal → futuro-academy → Configuración → Variables de entorno de la aplicación*, no en un archivo `.env` (ese nunca se sube).
 
 > **Nota:** el plan `F1` es gratuito pero tiene cuota de cómputo limitada (60 min/día) y puede tardar unos segundos en "despertar" si nadie lo visitó recientemente. Si la demo en vivo es crítica, visita el link unos minutos antes de presentar.
 

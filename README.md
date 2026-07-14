@@ -127,6 +127,8 @@ GEMINI_API_KEY=
 AIRTABLE_TOKEN=
 AIRTABLE_BASE_ID=
 AIRTABLE_TABLE_NAME=Leads
+ADMIN_PASSWORD=miclave123
+
 ```
 
 | Variable | Dónde obtenerla |
@@ -135,7 +137,7 @@ AIRTABLE_TABLE_NAME=Leads
 | `AIRTABLE_TOKEN` | [airtable.com/create/tokens](https://airtable.com/create/tokens), con permisos `data.records:read` y `data.records:write` sobre tu base |
 | `AIRTABLE_BASE_ID` | Se ve en la URL de tu base (`airtable.com/appXXXXXXXXXXXXXX/...`) |
 | `AIRTABLE_TABLE_NAME` | El nombre exacto de tu tabla, por defecto `Leads` |
-| `AIRTABLE_TABLE_NAME` | La contraseña puesta fue `miclave123` |
+| `ADMIN_PASSWORD` | La contraseña puesta fue `miclave123` |
 
 **El archivo `.env` nunca se sube al repositorio** (ya está en `.gitignore`).
 

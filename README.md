@@ -210,3 +210,6 @@ Este proyecto usa la **API de Gemini de Google** (`google-genai`, modelo `gemini
 - El flujo B2B del Comercial usa el mismo agente que el B2C; el campo `tipo_prospecto` ya está en el modelo de datos y se completa automáticamente al identificar la intención.
 - Si el usuario no da su consentimiento en el Tutor, el sistema no guarda ninguna señal comercial y respeta esa decisión.
 - Las acciones sugeridas por el Comercial (agendar reunión, enviar material, derivar a especialista) quedan como propuesta: un ejecutivo humano debe aprobarlas antes de ejecutarse.
+
+## PD. Link AirTable !!!!!!!!!!!!!!!!
+https://airtable.com/invite/l?inviteId=invBlMP9kVGE3lQ0g&inviteToken=9f7c66cc1c7813709c8bbc1bcd116059abb61f6e61af97cf6ea5488a888f76b7&utm_medium=email&utm_source=product_team&utm_content=transactional-alerts
